@@ -1,0 +1,15 @@
+numpy
+pandas
+gradio
+streamlit
+faiss-cpu
+sentence-transformers
+transformers
+peft
+torch
+PyPDF2
+diffusers
+gTTS
+nltk
+huggingface-hub
+Pillow
