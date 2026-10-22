@@ -18,13 +18,19 @@ BACKEND = os.getenv("MODEL_BACKEND", "api").lower()
 
 TEXT_MODEL = os.getenv(
     "TEXT_MODEL",
-    "meta-llama/Llama-3.1-8B-Instruct" if BACKEND == "api" else "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct" if BACKEND == "api" else "unsloth/Llama-3.2-3B-Instruct",
 )
 IMAGE_MODEL = os.getenv(
     "IMAGE_MODEL",
     "black-forest-labs/FLUX.1-schnell" if BACKEND == "api" else "stable-diffusion-v1-5/stable-diffusion-v1-5",
 )
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Optional LoRA adapter applied on top of the local base model; when set, the UI offers a
+# "Story model" toggle between the adapter and the plain base. Off by default: the current adapter
+# (RohanBabbar/lora-finetuned-mood-story) changes the base weights by ~0.007%, so its output is
+# identical to the base model's. unsloth/Llama-3.2-3B-Instruct is the ungated copy of its base.
+ADAPTER_REPO = os.getenv("ADAPTER_REPO", "") if BACKEND == "local" else ""
 
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "mood-story"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

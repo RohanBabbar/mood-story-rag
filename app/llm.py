@@ -1,9 +1,10 @@
 import json
 import re
+from contextlib import nullcontext
 from functools import lru_cache
 from threading import Thread
 
-from app.config import BACKEND, TEXT_FALLBACK_MODELS, TEXT_MODEL
+from app.config import ADAPTER_REPO, BACKEND, TEXT_FALLBACK_MODELS, TEXT_MODEL
 
 # Rough word targets per chapter; tokens are budgeted with headroom so endings aren't cut off.
 LENGTHS = {"Short": 150, "Medium": 280, "Long": 450}
@@ -62,13 +63,16 @@ def build_messages(prompt, genre, mood, lore_context="", previous_chapters=(), l
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
-def stream_story(messages, length="Medium", token=None):
-    """Yield the story text incrementally as it is generated."""
+def stream_story(messages, length="Medium", token=None, use_adapter=True):
+    """Yield the story text incrementally as it is generated.
+
+    `use_adapter` picks the fine-tuned LoRA (local backend only) or the plain base model.
+    """
     # Generous budget (~1.3 tokens per word, plus slack): models overshoot the target length, and
     # anything that still runs over is trimmed to the last full sentence by trim_to_last_sentence.
     max_tokens = int(LENGTHS.get(length, LENGTHS["Medium"]) * 2) + 120
     # A mild repetition penalty stops small local models looping on the same phrases.
-    yield from stream_chat(messages, max_tokens, token=token, repetition_penalty=1.1)
+    yield from stream_chat(messages, max_tokens, token=token, repetition_penalty=1.1, use_adapter=use_adapter)
 
 
 # A sentence ends with . ! ? or …, optionally followed by closing quotes or brackets.
@@ -88,14 +92,15 @@ def trim_to_last_sentence(text):
     return text[:cut]
 
 
-def stream_chat(messages, max_tokens, temperature=0.85, token=None, repetition_penalty=1.0):
+def stream_chat(messages, max_tokens, temperature=0.85, token=None, repetition_penalty=1.0, use_adapter=False):
     """`token` is the signed-in visitor's HF token; None falls back to the server's HF_TOKEN.
 
-    `repetition_penalty` only applies to local models; leave it at 1.0 for JSON output, whose
-    brackets and quotes legitimately repeat.
+    `repetition_penalty` and `use_adapter` only apply to local models. Keep the penalty at 1.0 for
+    JSON output, whose brackets and quotes legitimately repeat; the adapter is off by default
+    because it was trained to write stories, not JSON.
     """
     if BACKEND == "local":
-        yield from _stream_local(messages, max_tokens, temperature, repetition_penalty)
+        yield from _stream_local(messages, max_tokens, temperature, repetition_penalty, use_adapter)
     else:
         yield from _stream_api(messages, max_tokens, temperature, token)
 
@@ -238,11 +243,28 @@ def _load_local_model():
     model = AutoModelForCausalLM.from_pretrained(
         TEXT_MODEL, dtype=torch.float16 if device != "cpu" else torch.float32
     ).to(device)
+    if ADAPTER_REPO:
+        from peft import PeftModel
+
+        # The adapter was trained on a 4-bit (bitsandbytes) copy of this base. LoRA weights are
+        # independent of the base's storage precision, so they load onto fp16 without bitsandbytes,
+        # which only runs on NVIDIA GPUs.
+        model = PeftModel.from_pretrained(model, ADAPTER_REPO)
     model.eval()
     return tokenizer, model
 
 
-def _stream_local(messages, max_tokens, temperature, repetition_penalty=1.0):
+def adapter_switch(model, use_adapter):
+    """Context in which generation uses the fine-tuned adapter or the plain base model.
+
+    One model in memory serves both: PEFT can bypass the LoRA weights per call.
+    """
+    if hasattr(model, "disable_adapter") and not use_adapter:
+        return model.disable_adapter()
+    return nullcontext()
+
+
+def _stream_local(messages, max_tokens, temperature, repetition_penalty=1.0, use_adapter=False):
     from transformers import TextIteratorStreamer
 
     try:
@@ -255,11 +277,19 @@ def _stream_local(messages, max_tokens, temperature, repetition_penalty=1.0):
     ).to(model.device)
     # skip_prompt ensures only newly generated text is returned, not the instructions.
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-    Thread(
-        target=model.generate,
-        kwargs=dict(**inputs, streamer=streamer, max_new_tokens=max_tokens, do_sample=True,
-                    temperature=temperature, top_p=0.95, repetition_penalty=repetition_penalty,
-                    pad_token_id=tokenizer.eos_token_id),
-        daemon=True,
-    ).start()
+    errors = []
+
+    def generate():
+        try:
+            with adapter_switch(model, use_adapter):
+                model.generate(**inputs, streamer=streamer, max_new_tokens=max_tokens, do_sample=True,
+                               temperature=temperature, top_p=0.95, repetition_penalty=repetition_penalty,
+                               pad_token_id=tokenizer.eos_token_id)
+        except Exception as e:
+            errors.append(e)
+            streamer.end()  # otherwise the reader below would wait for text forever
+
+    Thread(target=generate, daemon=True).start()
     yield from streamer
+    if errors:
+        raise StoryError(f"Local generation failed: {errors[0]}") from errors[0]

@@ -12,6 +12,7 @@ from urllib.parse import quote
 import gradio as gr
 
 from app.config import (
+    ADAPTER_REPO,
     BACKEND,
     CHAPTERS_PER_DAY,
     FILE_RETENTION_HOURS,
@@ -72,6 +73,8 @@ EMPTY_STORY = """
 
 NO_LORE_STATUS = "No lore loaded. The story can invent its own world."
 
+FINE_TUNED, BASE_MODEL = "Fine-tuned (LoRA)", "Base model"
+
 
 def new_story():
     return {"chapters": [], "cast": {}, "summary": "", "choices": []}
@@ -108,7 +111,8 @@ def render_story(chapters, phase=None):
         if is_last and phase == "writing":
             body = (body or "<p></p>")[:-4] + '<span class="cursor"></span></p>'
 
-        meta = [chapter["genre"], chapter["mood"], chapter["style"] if chapter["image"] else ""]
+        meta = [chapter["genre"], chapter["mood"], chapter["style"] if chapter["image"] else "",
+                chapter.get("model", "")]
         meta = " · ".join(html.escape(m.lower()) for m in meta if m)
         lore = '<span class="lore-mark" title="Grounded in your uploaded lore">lore</span>' if chapter["lore_used"] else ""
         direction = f'<p class="direction">{html.escape(chapter["prompt"])}</p>' if chapter["prompt"] else ""
@@ -254,7 +258,7 @@ def notice(message, story):
     yield story_view(story)
 
 
-def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
+def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length, model_choice=FINE_TUNED,
                   request: gr.Request = None, oauth_token: gr.OAuthToken | None = None):
     """Stream the next chapter (or the first one), then analyse and illustrate it."""
     prompt = (prompt or "").strip()
@@ -284,12 +288,14 @@ def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
 
     messages = build_messages(prompt, genre, mood, context, previous, length, story["cast"], story["summary"])
     chapter = {"prompt": prompt, "genre": genre, "mood": mood, "style": art_style, "text": "", "image": None,
-               "lore_used": bool(context)}
+               "lore_used": bool(context),
+               # Which model wrote it, so base and fine-tuned chapters can be compared side by side.
+               "model": ("fine-tuned" if model_choice == FINE_TUNED else "base") if ADAPTER_REPO else ""}
     story["chapters"].append(chapter)
 
     last_render = 0.0
     try:
-        for piece in stream_story(messages, length, token):
+        for piece in stream_story(messages, length, token, use_adapter=model_choice == FINE_TUNED):
             chapter["text"] += piece
             # Throttle UI updates; re-rendering on every token is wasteful.
             if time.monotonic() - last_render > 0.08:
@@ -324,9 +330,10 @@ def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
     yield story_view(story, prompt=gr.update(value="", placeholder=NEXT_PLACEHOLDER))
 
 
-def follow_choice(choice, genre, mood, art_style, story, lore, use_lore, length,
+def follow_choice(choice, genre, mood, art_style, story, lore, use_lore, length, model_choice=FINE_TUNED,
                   request: gr.Request = None, oauth_token: gr.OAuthToken | None = None):
-    yield from write_chapter(choice, genre, mood, art_style, story, lore, use_lore, length, request, oauth_token)
+    yield from write_chapter(choice, genre, mood, art_style, story, lore, use_lore, length, model_choice,
+                             request, oauth_token)
 
 
 def random_idea():
@@ -453,6 +460,9 @@ def create_app():
                 with gr.Row():
                     art_style_input = gr.Dropdown(list(ART_STYLES), value=DEFAULT_ART_STYLE, label="Art style", min_width=120)
                     length_input = gr.Dropdown(list(LENGTHS), value="Medium", label="Chapter length", min_width=120)
+                model_input = gr.Radio([FINE_TUNED, BASE_MODEL], value=FINE_TUNED, label="Story model",
+                                       info="Your LoRA adapter, or the same model without it",
+                                       visible=bool(ADAPTER_REPO))
 
                 write_btn = gr.Button("Start the story", variant="primary")
                 random_btn = gr.Button("Random idea", size="sm", elem_classes="quiet")
@@ -487,7 +497,8 @@ def create_app():
             "</footer>"
         )
 
-        settings = [genre_input, mood_input, art_style_input, story_state, lore_state, use_lore, length_input]
+        settings = [genre_input, mood_input, art_style_input, story_state, lore_state, use_lore, length_input,
+                    model_input]
         outputs = [story_state, story_html, notes_html, prompt_input, write_btn, choices_box, *choice_buttons, actions_row]
         # A local GPU can only run one generation at a time; hosted APIs can handle several.
         concurrency = 1 if BACKEND == "local" else 4
