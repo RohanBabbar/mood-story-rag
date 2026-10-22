@@ -19,7 +19,8 @@ hf_oauth_scopes:
   <h1>🎭 Mood Story RAG</h1>
   <p><b>An illustrated, episodic storyteller that keeps your world's lore straight.</b></p>
 
-  [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+  [![CI](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml)
+  [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
   [![Gradio](https://img.shields.io/badge/UI-Gradio%206-ff69b4.svg)](https://gradio.app/)
   [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 </div>

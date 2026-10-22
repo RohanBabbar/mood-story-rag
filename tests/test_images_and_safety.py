@@ -1,3 +1,4 @@
+from typing import ClassVar
 from unittest import mock
 
 import pytest
@@ -47,7 +48,7 @@ def test_unknown_style_uses_the_default():
 # === Image generation via the hosted API ===
 
 class FakeImageClient:
-    calls = []
+    calls: ClassVar[list] = []
 
     def __init__(self, provider=None, api_key=None):
         pass

@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import gradio as gr
 import pytest
 
-import app.main as main
+from app import main
 from app.llm import StoryError
 
 

@@ -12,13 +12,30 @@ from urllib.parse import quote
 import gradio as gr
 
 from app.config import (
-    BACKEND, CHAPTERS_PER_DAY, FILE_RETENTION_HOURS, IMAGE_MODEL, OUTPUT_DIR, REQUIRE_LOGIN, TEXT_MODEL,
+    BACKEND,
+    CHAPTERS_PER_DAY,
+    FILE_RETENTION_HOURS,
+    IMAGE_MODEL,
+    OUTPUT_DIR,
+    REQUIRE_LOGIN,
+    TEXT_MODEL,
 )
 from app.llm import (
-    LENGTHS, StoryError, analyze_chapter, build_messages, explain_hf_error, stream_story, trim_to_last_sentence,
+    LENGTHS,
+    StoryError,
+    analyze_chapter,
+    build_messages,
+    explain_hf_error,
+    stream_story,
+    trim_to_last_sentence,
 )
 from app.multimodal import (
-    ART_STYLES, DEFAULT_ART_STYLE, NO_ILLUSTRATIONS, first_sentences, generate_image, generate_narration,
+    ART_STYLES,
+    DEFAULT_ART_STYLE,
+    NO_ILLUSTRATIONS,
+    first_sentences,
+    generate_image,
+    generate_narration,
 )
 from app.rag_pipeline import build_faiss_index, get_embedder, retrieve_context
 from app.safety import check_prompt
@@ -303,7 +320,7 @@ def narrate_latest(story):
         return gr.update(value=generate_narration(story["chapters"][-1]["text"]), visible=True)
     except Exception as e:
         print(f"[narration failed] {e}")
-        raise gr.Error("The narration service didn't respond. Give it a minute and try again.")
+        raise gr.Error("The narration service didn't respond. Give it a minute and try again.") from e
 
 
 def export_story(story):

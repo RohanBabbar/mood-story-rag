@@ -4,7 +4,6 @@ from functools import lru_cache
 
 from app.config import BACKEND, IMAGE_FALLBACK_MODELS, IMAGE_MODEL, OUTPUT_DIR
 
-
 NO_ILLUSTRATIONS = "No illustrations"
 
 # Each style is appended to the scene description; keep them as visual descriptors the image model understands.
@@ -36,8 +35,8 @@ def build_image_prompt(scene, genre, mood, style=DEFAULT_ART_STYLE, characters=(
         described = _with_article(kind) + (f" ({details})" if details else "")
         pattern = re.compile(rf"\b{re.escape(name)}('s)?\b")
         if pattern.search(scene):
-            scene = pattern.sub(lambda m: described + (m.group(1) or ""), scene, count=1)
-            scene = pattern.sub(lambda m: f"the {kind}" + (m.group(1) or ""), scene)
+            scene = pattern.sub(lambda m, d=described: d + (m.group(1) or ""), scene, count=1)
+            scene = pattern.sub(lambda m, k=kind: f"the {k}" + (m.group(1) or ""), scene)
         else:
             scene += f" Also in the scene: {described}."
     style_prompt = ART_STYLES.get(style) or ART_STYLES[DEFAULT_ART_STYLE]

@@ -5,7 +5,7 @@ from unittest import mock
 import pytest
 from huggingface_hub.errors import HfHubHTTPError
 
-import app.llm as llm
+from app import llm
 
 
 def http_error(status):

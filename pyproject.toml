@@ -15,3 +15,6 @@ extend-exclude = ["notebooks", "extracted_notebook.py"]
 [tool.ruff.lint]
 # Defaults plus import sorting, likely bugs and modern-Python upgrades.
 extend-select = ["I", "B", "UP"]
+# The outermost UI handlers catch every exception on purpose: a visitor should get a readable
+# notice ("Story generation failed") instead of a broken page, whatever went wrong underneath.
+ignore = ["BLE001"]
