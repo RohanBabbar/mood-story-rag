@@ -1,0 +1,15 @@
+# Direct dependencies of the app. Edit this file, then regenerate the lock:
+#   uv pip compile requirements.in --universal --python-version 3.12 \
+#     --index-strategy unsafe-best-match --emit-index-url -o requirements.txt
+# CPU-only PyTorch keeps the Space image small (torch is only used for embeddings).
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+gradio>=6.0,<7
+huggingface_hub>=1.0
+sentence-transformers>=3.0
+faiss-cpu
+numpy
+pypdf
+gTTS
+Pillow
+python-dotenv
