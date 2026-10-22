@@ -1,0 +1,295 @@
+/* Colors come from the Gradio theme in main.py; these are the few extras it doesn't cover. */
+:root {
+  --serif: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --rule: #e0d6c5;
+  --accent: #b4532a;
+}
+.dark {
+  --rule: #36312b;
+  --accent: #de7b4f;
+}
+
+.gradio-container {
+  max-width: 1180px !important;
+  margin: 0 auto !important;
+  padding: 0 24px !important;
+}
+
+/* === Masthead === */
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 28px 0 18px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--rule);
+}
+.wordmark {
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--body-text-color);
+}
+.wordmark::first-letter { color: var(--accent); }
+.tagline {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 17px;
+  color: var(--body-text-color-subdued);
+}
+
+/* === Sidebar === */
+.layout { gap: 48px !important; }
+.sidebar {
+  gap: 14px !important;
+  position: sticky;
+  top: 16px;
+  align-self: flex-start;
+}
+/* Gradio groups inputs in a .form whose background doubles as divider lines; drop it. */
+.sidebar .form {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  gap: 12px !important;
+}
+.sidebar .block-title, .sidebar span[data-testid="block-info"], .sidebar label > span:first-child {
+  font-family: var(--mono);
+  font-size: 11.5px !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sidebar textarea {
+  font-family: var(--serif) !important;
+  font-size: 17px !important;
+  line-height: 1.45 !important;
+}
+.hint, .hint p {
+  font-size: 13.5px !important;
+  line-height: 1.5;
+  color: var(--body-text-color-subdued) !important;
+}
+.lore {
+  border-top: 1px solid var(--rule) !important;
+  border-radius: 0 !important;
+  padding-top: 6px !important;
+}
+
+/* Text-style buttons for secondary actions. */
+button.quiet {
+  border: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  color: var(--body-text-color-subdued) !important;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 4px;
+  font-weight: 400 !important;
+  min-width: 0 !important;
+  padding: 4px 6px !important;
+}
+button.quiet:hover {
+  color: var(--accent) !important;
+  text-decoration-color: currentColor;
+}
+.sidebar button.quiet { align-self: center; }
+
+/* === Story page === */
+.page { gap: 0 !important; }
+.empty {
+  padding: 72px 8px;
+  max-width: 460px;
+  color: var(--body-text-color-subdued);
+  line-height: 1.6;
+}
+.empty-title {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-style: italic;
+  color: var(--body-text-color);
+  margin: 0 0 10px;
+}
+
+.book { max-width: 680px; }
+.chapter { animation: fade-in 0.4s ease-out; }
+.chapter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.numeral {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--body-text-color-subdued);
+  text-align: right;
+}
+.lore-mark {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--accent);
+}
+.direction {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--body-text-color-subdued);
+  margin: 0 0 18px;
+}
+.direction::before { content: "\2192\00a0"; }
+.art {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  border-radius: 3px;
+  margin-bottom: 22px;
+}
+.art-pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--rule);
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--body-text-color-subdued);
+  animation: breathe 2s ease-in-out infinite;
+}
+.chapter-text p {
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.7;
+  margin: 0 0 0.85em;
+  color: var(--body-text-color);
+}
+.chapter-text p:first-child::first-letter {
+  float: left;
+  font-size: 3.4em;
+  line-height: 0.85;
+  padding: 6px 8px 0 0;
+  color: var(--accent);
+}
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: blink 1s steps(2) infinite;
+}
+.fleuron {
+  text-align: center;
+  font-size: 22px;
+  color: var(--body-text-color-subdued);
+  margin: 34px 0;
+}
+
+/* === What happens next === */
+.choices {
+  max-width: 680px;
+  gap: 8px !important;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+}
+.choices-label {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--body-text-color-subdued);
+  margin: 0 0 4px;
+}
+button.choice {
+  justify-content: flex-start !important;
+  text-align: left !important;
+  font-family: var(--serif) !important;
+  font-size: 17px !important;
+  font-weight: 400 !important;
+  padding: 10px 14px !important;
+  white-space: normal !important;
+}
+button.choice::before {
+  content: "\2192";
+  margin-right: 10px;
+  color: var(--accent);
+}
+button.choice:hover { border-color: var(--accent) !important; }
+
+/* === Summary + cast === */
+.notes {
+  max-width: 680px;
+  margin-top: 28px;
+  padding: 18px 20px;
+  background: var(--background-fill-secondary);
+  border-radius: 4px;
+  display: grid;
+  gap: 18px;
+}
+.note h4 {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--body-text-color-subdued);
+  margin: 0 0 6px;
+}
+.note p, .note li {
+  font-family: var(--serif);
+  font-size: 16.5px;
+  line-height: 1.55;
+  margin: 0;
+}
+.note ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.note b { font-weight: 600; margin-right: 4px; }
+
+.actions {
+  max-width: 680px;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  margin-top: 22px;
+}
+.actions > * { flex: 0 0 auto !important; min-width: 0 !important; }
+
+.signin {
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 12px;
+}
+.signin > * { flex: 0 1 auto !important; min-width: 0 !important; }
+.colophon p { margin: 0 0 4px; }
+.colophon {
+  margin-top: 56px;
+  padding: 16px 0 8px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--body-text-color-subdued);
+}
+
+@keyframes blink { to { visibility: hidden; } }
+@keyframes breathe { 50% { opacity: 0.55; } }
+@keyframes fade-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .chapter, .art-pending, .cursor { animation: none; }
+}
+@media (max-width: 760px) {
+  .gradio-container { padding: 0 16px !important; }
+  .layout { gap: 28px !important; }
+  .sidebar { position: static; }
+  .chapter-text p { font-size: 17.5px; }
+}
