@@ -40,6 +40,7 @@ env/
 .DS_Store
 
 # Data
-# Ignore all files in data/sample_lore except for .gitkeep
-data/sample_lore/*
-!data/sample_lore/.gitkeep
+# Evaluation run artefacts other than the reports
+eval/results/*
+!eval/results/*.md
+!eval/results/*.json

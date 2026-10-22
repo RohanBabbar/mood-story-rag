@@ -1,0 +1,232 @@
+[
+  {
+    "embedder": "all-MiniLM-L6-v2",
+    "chunk_words": 60,
+    "overlap": 0,
+    "chunks": 28,
+    "share_retrieved@4": 0.14285714285714285,
+    "recall@1": 0.4666666666666667,
+    "recall@2": 0.5,
+    "recall@4": 0.7,
+    "seconds": 0.62,
+    "is_app_setting": false,
+    "misses@4": [
+      "Where does the young prince hide his maps?",
+      "How do you get into the heir's hidden room?",
+      "Why are the libraries loud?",
+      "Why are timekeeping devices banned?",
+      "What do families send down the river during the winter festival?",
+      "How is the peace agreement with the desert city renewed?",
+      "How many times will a wild griffin let someone ride it?",
+      "What is unusual about the throne in the desert city?",
+      "When does the desert city's year begin?"
+    ]
+  },
+  {
+    "embedder": "all-MiniLM-L6-v2",
+    "chunk_words": 60,
+    "overlap": 20,
+    "chunks": 39,
+    "share_retrieved@4": 0.10256410256410256,
+    "recall@1": 0.4666666666666667,
+    "recall@2": 0.7333333333333333,
+    "recall@4": 0.8,
+    "seconds": 0.3,
+    "is_app_setting": false,
+    "misses@4": [
+      "How do you get into the heir's hidden room?",
+      "Where do young mages go to study?",
+      "What do people use as money on the flying island?",
+      "What is unusual about the throne in the desert city?",
+      "Why are the desert libraries kept quiet?",
+      "How do you get rid of the guardian in the old cisterns?"
+    ]
+  },
+  {
+    "embedder": "all-MiniLM-L6-v2",
+    "chunk_words": 120,
+    "overlap": 0,
+    "chunks": 15,
+    "share_retrieved@4": 0.26666666666666666,
+    "recall@1": 0.4,
+    "recall@2": 0.6333333333333333,
+    "recall@4": 0.8,
+    "seconds": 0.25,
+    "is_app_setting": false,
+    "misses@4": [
+      "Where do young mages go to study?",
+      "Why are timekeeping devices banned?",
+      "How is the peace agreement with the desert city renewed?",
+      "How many times will a wild griffin let someone ride it?",
+      "What is unusual about the throne in the desert city?",
+      "How do you get rid of the guardian in the old cisterns?"
+    ]
+  },
+  {
+    "embedder": "all-MiniLM-L6-v2",
+    "chunk_words": 120,
+    "overlap": 30,
+    "chunks": 18,
+    "share_retrieved@4": 0.2222222222222222,
+    "recall@1": 0.5666666666666667,
+    "recall@2": 0.7333333333333333,
+    "recall@4": 0.8333333333333334,
+    "seconds": 0.27,
+    "is_app_setting": true,
+    "misses@4": [
+      "Where do young mages go to study?",
+      "Why is singing not allowed in the southern swamp?",
+      "What is unusual about the throne in the desert city?",
+      "How do you get rid of the guardian in the old cisterns?",
+      "When does the desert city's year begin?"
+    ]
+  },
+  {
+    "embedder": "all-MiniLM-L6-v2",
+    "chunk_words": 200,
+    "overlap": 0,
+    "chunks": 9,
+    "share_retrieved@4": 0.4444444444444444,
+    "recall@1": 0.7,
+    "recall@2": 0.8333333333333334,
+    "recall@4": 0.8666666666666667,
+    "seconds": 0.3,
+    "is_app_setting": false,
+    "misses@4": [
+      "What powers magic in this world?",
+      "How can a traveller get past the creature guarding the caverns?",
+      "Why are timekeeping devices banned?",
+      "How do you get rid of the guardian in the old cisterns?"
+    ]
+  },
+  {
+    "embedder": "all-MiniLM-L6-v2",
+    "chunk_words": 200,
+    "overlap": 50,
+    "chunks": 11,
+    "share_retrieved@4": 0.36363636363636365,
+    "recall@1": 0.8,
+    "recall@2": 0.8666666666666667,
+    "recall@4": 0.9666666666666667,
+    "seconds": 0.25,
+    "is_app_setting": false,
+    "misses@4": [
+      "How do you get rid of the guardian in the old cisterns?"
+    ]
+  },
+  {
+    "embedder": "bge-small-en-v1.5",
+    "chunk_words": 60,
+    "overlap": 0,
+    "chunks": 28,
+    "share_retrieved@4": 0.14285714285714285,
+    "recall@1": 0.43333333333333335,
+    "recall@2": 0.5333333333333333,
+    "recall@4": 0.7,
+    "seconds": 0.49,
+    "is_app_setting": false,
+    "misses@4": [
+      "Where does the young prince hide his maps?",
+      "Why are the libraries loud?",
+      "Why are timekeeping devices banned?",
+      "What do families send down the river during the winter festival?",
+      "How is the peace agreement with the desert city renewed?",
+      "How many times will a wild griffin let someone ride it?",
+      "What is unusual about the throne in the desert city?",
+      "Why are the desert libraries kept quiet?",
+      "What money is used in the desert night markets?"
+    ]
+  },
+  {
+    "embedder": "bge-small-en-v1.5",
+    "chunk_words": 60,
+    "overlap": 20,
+    "chunks": 39,
+    "share_retrieved@4": 0.10256410256410256,
+    "recall@1": 0.5666666666666667,
+    "recall@2": 0.7,
+    "recall@4": 0.8,
+    "seconds": 0.52,
+    "is_app_setting": false,
+    "misses@4": [
+      "What happens if the ruler of the kingdom tries to say something untrue?",
+      "Where do young mages go to study?",
+      "What do people use as money on the flying island?",
+      "Why are the desert libraries kept quiet?",
+      "How do you get rid of the guardian in the old cisterns?",
+      "What money is used in the desert night markets?"
+    ]
+  },
+  {
+    "embedder": "bge-small-en-v1.5",
+    "chunk_words": 120,
+    "overlap": 0,
+    "chunks": 15,
+    "share_retrieved@4": 0.26666666666666666,
+    "recall@1": 0.5666666666666667,
+    "recall@2": 0.7,
+    "recall@4": 0.7666666666666667,
+    "seconds": 0.38,
+    "is_app_setting": false,
+    "misses@4": [
+      "Where do young mages go to study?",
+      "Why are timekeeping devices banned?",
+      "How is the peace agreement with the desert city renewed?",
+      "How many times will a wild griffin let someone ride it?",
+      "What is unusual about the throne in the desert city?",
+      "How do you get rid of the guardian in the old cisterns?",
+      "What money is used in the desert night markets?"
+    ]
+  },
+  {
+    "embedder": "bge-small-en-v1.5",
+    "chunk_words": 120,
+    "overlap": 30,
+    "chunks": 18,
+    "share_retrieved@4": 0.2222222222222222,
+    "recall@1": 0.6,
+    "recall@2": 0.7333333333333333,
+    "recall@4": 0.9333333333333333,
+    "seconds": 0.42,
+    "is_app_setting": false,
+    "misses@4": [
+      "Where do young mages go to study?",
+      "How do you get rid of the guardian in the old cisterns?"
+    ]
+  },
+  {
+    "embedder": "bge-small-en-v1.5",
+    "chunk_words": 200,
+    "overlap": 0,
+    "chunks": 9,
+    "share_retrieved@4": 0.4444444444444444,
+    "recall@1": 0.5333333333333333,
+    "recall@2": 0.6666666666666666,
+    "recall@4": 0.8333333333333334,
+    "seconds": 0.36,
+    "is_app_setting": false,
+    "misses@4": [
+      "What powers magic in this world?",
+      "What strange thing happens to people who spend the night under the mountain?",
+      "What do people use as money on the flying island?",
+      "Why are timekeeping devices banned?",
+      "How do you get rid of the guardian in the old cisterns?"
+    ]
+  },
+  {
+    "embedder": "bge-small-en-v1.5",
+    "chunk_words": 200,
+    "overlap": 50,
+    "chunks": 11,
+    "share_retrieved@4": 0.36363636363636365,
+    "recall@1": 0.7,
+    "recall@2": 0.8333333333333334,
+    "recall@4": 0.9333333333333333,
+    "seconds": 0.42,
+    "is_app_setting": false,
+    "misses@4": [
+      "Why are the desert libraries kept quiet?",
+      "How do you get rid of the guardian in the old cisterns?"
+    ]
+  }
+]
