@@ -15,6 +15,7 @@ import pytest
 os.environ.update({
     "MODEL_BACKEND": "api",
     "HF_TOKEN": "hf_test_token_not_real",
+    "GROQ_API_KEY": "",  # empty, so the defaults are the HF provider; Groq tests switch it on
     "REQUIRE_LOGIN": "false",
     "CHAPTERS_PER_DAY": "0",
 })
