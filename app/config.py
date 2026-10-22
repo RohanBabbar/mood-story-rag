@@ -45,3 +45,11 @@ CHAPTERS_PER_DAY = int(os.getenv("CHAPTERS_PER_DAY", "10" if ON_SPACES and not R
 
 # Generated images, audio and zips older than this are deleted.
 FILE_RETENTION_HOURS = float(os.getenv("FILE_RETENTION_HOURS", "24"))
+
+# Input limits for a public demo. Enforced on the server, not just in the browser, because the
+# app's API can be called directly.
+MAX_PROMPT_CHARS = 500
+MAX_LORE_FILES = 5
+MAX_LORE_FILE_MB = 5
+# Caps embedding work: 20k words is ~200 chunks, a few seconds to index even on a small CPU.
+MAX_LORE_WORDS = 20_000

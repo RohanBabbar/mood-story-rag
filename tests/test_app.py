@@ -164,3 +164,38 @@ def test_nothing_to_export_is_an_error():
 
 def test_the_app_builds():
     assert isinstance(main.create_app(), gr.Blocks)
+
+
+# === Input limits ===
+
+def test_overlong_premise_is_refused(fake_models):
+    assert write("x" * (main.MAX_PROMPT_CHARS + 1))["chapters"] == []
+
+
+def test_only_the_first_lore_files_are_used(tmp_path):
+    paths = []
+    for i in range(main.MAX_LORE_FILES + 2):
+        path = tmp_path / f"part{i}.txt"
+        path.write_text(f"fact number {i}", encoding="utf-8")
+        paths.append(str(path))
+    lore, status = main.process_lore(paths)
+    assert len(lore.sources) == main.MAX_LORE_FILES
+    assert f"only the first {main.MAX_LORE_FILES} files are used" in status
+
+
+def test_oversized_lore_file_is_skipped(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "MAX_LORE_FILE_MB", 0.001)  # ~1 KB
+    big, small = tmp_path / "big.txt", tmp_path / "small.txt"
+    big.write_text("word " * 1000, encoding="utf-8")
+    small.write_text("The queen cannot lie.", encoding="utf-8")
+    lore, status = main.process_lore([str(big), str(small)])
+    assert lore.sources == ["small.txt"] and "big.txt: larger than" in status
+
+
+def test_lore_is_capped_at_the_word_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "MAX_LORE_WORDS", 50)
+    path = tmp_path / "long.txt"
+    path.write_text(" ".join(f"w{i}" for i in range(200)), encoding="utf-8")
+    lore, status = main.process_lore([str(path)])
+    assert sum(len(c.split()) for c in lore.chunks) <= 50 + 30  # word cap plus chunk overlap
+    assert "only the first 50 words are used" in status

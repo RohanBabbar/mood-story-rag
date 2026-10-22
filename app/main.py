@@ -16,6 +16,10 @@ from app.config import (
     CHAPTERS_PER_DAY,
     FILE_RETENTION_HOURS,
     IMAGE_MODEL,
+    MAX_LORE_FILE_MB,
+    MAX_LORE_FILES,
+    MAX_LORE_WORDS,
+    MAX_PROMPT_CHARS,
     OUTPUT_DIR,
     REQUIRE_LOGIN,
     TEXT_MODEL,
@@ -160,10 +164,25 @@ def process_lore(files):
     if not files:
         return None, NO_LORE_STATUS
     chunks, sources, problems = [], [], []
+    if len(files) > MAX_LORE_FILES:
+        problems.append(f"only the first {MAX_LORE_FILES} files are used")
+        files = files[:MAX_LORE_FILES]
+    words_left = MAX_LORE_WORDS
     for path in files:
         name = Path(path).name
+        if Path(path).stat().st_size > MAX_LORE_FILE_MB * 1024 * 1024:
+            problems.append(f"{name}: larger than {MAX_LORE_FILE_MB} MB")
+            continue
+        if words_left <= 0:
+            problems.append(f"{name}: lore word limit reached")
+            continue
         try:
-            file_chunks = chunk_text(load_custom_lore(path))
+            words = load_custom_lore(path).split()
+            if len(words) > words_left:
+                problems.append(f"{name}: only the first {words_left:,} words are used")
+                words = words[:words_left]
+            words_left -= len(words)
+            file_chunks = chunk_text(" ".join(words))
         except ValueError as e:
             problems.append(str(e))
             continue
@@ -244,6 +263,8 @@ def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
     try:
         if not original["chapters"] and not prompt:
             raise StoryError("Give the story a premise first, or try a random idea.")
+        if len(prompt) > MAX_PROMPT_CHARS:
+            raise StoryError(f"Please keep the premise under {MAX_PROMPT_CHARS} characters.")
         refusal = check_prompt(" ".join([prompt, genre or "", mood]))
         if refusal:
             raise StoryError(refusal)
@@ -424,7 +445,8 @@ def create_app():
 
         with gr.Row(equal_height=False, elem_classes="layout"):
             with gr.Column(scale=4, min_width=300, elem_classes="sidebar"):
-                prompt_input = gr.Textbox(lines=4, label="Premise", placeholder=PROMPT_PLACEHOLDER)
+                prompt_input = gr.Textbox(lines=4, label="Premise", placeholder=PROMPT_PLACEHOLDER,
+                                          max_length=MAX_PROMPT_CHARS)
                 with gr.Row():
                     genre_input = gr.Dropdown(GENRES, value="Fantasy", label="Genre", allow_custom_value=True, min_width=120)
                     mood_input = gr.Dropdown(MOODS, value="Hopeful", label="Mood", allow_custom_value=True, min_width=120)
@@ -495,7 +517,7 @@ def launch():
     # Load the embedding model now rather than on the first lore upload.
     threading.Thread(target=get_embedder, daemon=True).start()
     create_app().queue().launch(theme=THEME, css=CSS, head=HEAD, allowed_paths=[str(OUTPUT_DIR)],
-                                    footer_links=[])
+                                footer_links=[], max_file_size=f"{MAX_LORE_FILE_MB}mb")
 
 
 if __name__ == "__main__":
