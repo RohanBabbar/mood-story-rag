@@ -62,8 +62,8 @@ def test_sign_in_required_on_spaces(monkeypatch):
 def fake_models(monkeypatch, output_dir):
     calls = {}
 
-    def stream_story(messages, length, token):
-        calls["messages"] = messages
+    def stream_story(messages, length, token, use_adapter=True):
+        calls["messages"], calls["use_adapter"] = messages, use_adapter
         yield "Mira opened the door. " + "The tide whispered her name. " * 10
         yield "The sea poured in, and"   # cut off mid-sentence, like a real token limit
 
@@ -83,9 +83,9 @@ def fake_models(monkeypatch, output_dir):
     return calls
 
 
-def write(prompt, story=None, style="Watercolor"):
+def write(prompt, story=None, style="Watercolor", model_choice=main.FINE_TUNED):
     updates = list(main.write_chapter(prompt, "Fantasy", "Eerie", style, story or main.new_story(),
-                                      None, True, "Short"))
+                                      None, True, "Short", model_choice))
     return updates[-1][0]  # final story state
 
 
@@ -117,7 +117,7 @@ def test_refused_prompt_leaves_the_story_unchanged(fake_models):
 def test_failed_generation_keeps_the_previous_story(fake_models, monkeypatch):
     existing = write("A door in the sea")
 
-    def broken_stream(messages, length, token):
+    def broken_stream(messages, length, token, use_adapter=True):
         yield "Half a chapter"
         raise StoryError("Model request failed")
 
@@ -127,6 +127,16 @@ def test_failed_generation_keeps_the_previous_story(fake_models, monkeypatch):
 
 def test_a_premise_is_needed_to_start(fake_models):
     assert write("")["chapters"] == []
+
+
+
+def test_story_model_choice_reaches_the_generator(fake_models, monkeypatch):
+    monkeypatch.setattr(main, "ADAPTER_REPO", "someone/adapter")
+    tuned = write("A door in the sea")
+    assert fake_models["use_adapter"] is True and tuned["chapters"][0]["model"] == "fine-tuned"
+    base = write("A door in the sea", model_choice=main.BASE_MODEL)
+    assert fake_models["use_adapter"] is False and base["chapters"][0]["model"] == "base"
+    assert "base" in main.render_story(base["chapters"])
 
 
 # === Lore upload and export ===

@@ -177,3 +177,44 @@ def test_does_not_switch_models_halfway_through_a_chapter():
     with pytest.raises(llm.StoryError):
         stream_with({PRIMARY: "midway"})
     assert FakeClient.calls == [PRIMARY]
+
+
+# === Local model: adapter switch and background-thread failures ===
+
+class FakePeftModel:
+    def disable_adapter(self):
+        return "adapter disabled"
+
+
+def test_adapter_is_bypassed_only_when_asked():
+    assert llm.adapter_switch(FakePeftModel(), use_adapter=False) == "adapter disabled"
+    assert llm.adapter_switch(FakePeftModel(), use_adapter=True) != "adapter disabled"
+    # A plain model without an adapter just runs as itself.
+    assert llm.adapter_switch(object(), use_adapter=False) is not None
+
+
+class FakeTokenizer:
+    eos_token_id = 0
+
+    def apply_chat_template(self, *args, **kwargs):
+        return types.SimpleNamespace(to=lambda device: {})
+
+
+def run_local(generate):
+    model = types.SimpleNamespace(device="cpu", generate=generate)
+    with mock.patch.object(llm, "_load_local_model", lambda: (FakeTokenizer(), model)):
+        return "".join(llm._stream_local([], 10, 0.5))
+
+
+def test_local_generation_streams_text():
+    def generate(streamer, **kwargs):
+        streamer.on_finalized_text("Once upon a time.", stream_end=True)
+    assert run_local(generate) == "Once upon a time."
+
+
+def test_local_generation_crash_is_reported_instead_of_hanging():
+    # Regression: an exception in the generation thread used to leave the reader waiting forever.
+    def generate(**kwargs):
+        raise RuntimeError("MPS backend out of memory")
+    with pytest.raises(llm.StoryError, match="out of memory"):
+        run_local(generate)

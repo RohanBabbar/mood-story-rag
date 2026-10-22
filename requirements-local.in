@@ -5,3 +5,4 @@
 transformers
 diffusers
 accelerate
+peft
