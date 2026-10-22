@@ -1,0 +1,5 @@
+# Extra dependencies for MODEL_BACKEND=local (runs LLaMA + Stable Diffusion on your own machine).
+-r requirements.txt
+transformers
+diffusers
+accelerate

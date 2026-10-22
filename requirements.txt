@@ -1,15 +1,12 @@
-numpy
-pandas
-gradio
-streamlit
-faiss-cpu
-sentence-transformers
-transformers
-peft
+# CPU-only PyTorch keeps the deployment image small (used only for the embedding model).
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch
-PyPDF2
-diffusers
+gradio>=6.0,<7
+huggingface_hub>=1.0
+sentence-transformers>=3.0
+faiss-cpu
+numpy
+pypdf
 gTTS
-nltk
-huggingface-hub
 Pillow
+python-dotenv
