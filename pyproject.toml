@@ -1,0 +1,17 @@
+# Tool settings only; the app is run with `python run.py`, not installed as a package.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+# User-facing notices (gr.Warning) print as warnings when there is no browser; they are expected here.
+filterwarnings = ["ignore::UserWarning:gradio.helpers"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["notebooks", "extracted_notebook.py"]
+
+[tool.ruff.lint]
+# Defaults plus import sorting, likely bugs and modern-Python upgrades.
+extend-select = ["I", "B", "UP"]

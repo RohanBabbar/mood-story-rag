@@ -2,6 +2,7 @@ import html
 import random
 import threading
 import time
+import uuid
 import zipfile
 from collections import defaultdict
 from datetime import date
@@ -309,8 +310,9 @@ def export_story(story):
     """Bundle the story as Markdown plus illustrations in a zip."""
     if not story["chapters"]:
         raise gr.Error("There's no story to export yet.")
+    # The random suffix keeps two visitors exporting in the same second from sharing a file.
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    zip_path = OUTPUT_DIR / f"mood-story-{stamp}.zip"
+    zip_path = OUTPUT_DIR / f"mood-story-{stamp}-{uuid.uuid4().hex[:8]}.zip"
     lines = ["# My Mood Story", ""]
     with zipfile.ZipFile(zip_path, "w") as zf:
         for i, chapter in enumerate(story["chapters"], 1):
