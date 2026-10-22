@@ -44,3 +44,6 @@ env/
 eval/results/*
 !eval/results/*.md
 !eval/results/*.json
+!eval/results/story_samples.jsonl
+# The blind A/B test's answer key stays local so testers can't peek.
+eval/results/ab_key.json
