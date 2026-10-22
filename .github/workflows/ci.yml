@@ -1,8 +1,10 @@
-# Lint and test on every push and pull request.
+# Lint and test every pull request and everything that lands on main.
 name: CI
 
+# Pushes to other branches are covered by their pull request, so they aren't run twice.
 on:
   push:
+    branches: [main]
   pull_request:
 
 # A newer push to the same branch makes an in-progress run pointless.
