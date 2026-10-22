@@ -4,7 +4,7 @@ emoji: 🎭
 colorFrom: purple
 colorTo: yellow
 sdk: gradio
-sdk_version: 6.29.0
+sdk_version: 6.30.0
 python_version: "3.12"
 app_file: run.py
 pinned: false
@@ -83,6 +83,10 @@ python run.py
 Open http://localhost:7860.
 
 **Hugging Face token:** create a fine-grained token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) with **"Make calls to Inference Providers"** enabled, and put it in `.env` as `HF_TOKEN`.
+
+### Dependencies
+
+`requirements*.txt` are lock files with every package pinned, so local runs and the Space install exactly the same versions. Edit the matching `requirements*.in` file instead, then regenerate the lock with the command at the top of the `.txt` file (needs `pip install -r requirements-dev.txt`). To upgrade a single package, add `--upgrade-package <name>` to that command.
 
 ### Running models on your own machine
 

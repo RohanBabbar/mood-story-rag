@@ -1,0 +1,5 @@
+# Tools for development: dependency locking, tests and linting.
+-c requirements.txt
+uv
+pytest
+ruff
