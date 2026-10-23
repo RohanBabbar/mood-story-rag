@@ -134,17 +134,20 @@ pip install -r requirements-local.txt
 MODEL_BACKEND=local python run.py
 ```
 
-## ☁️ Deploy to Hugging Face Spaces
+## ☁️ Deploy
 
-The YAML header at the top of this file is the Space config; the free **CPU basic** hardware is enough.
+The live demo runs on [Modal](https://modal.com): a T4 GPU that starts when someone opens the page and shuts down after 5 idle minutes, which fits in the free Starter plan's $30 of monthly credits. The first visit after a pause takes about a minute to wake up. Text comes from Groq either way; the GPU draws pictures in about a second.
 
-1. Create a Space at [huggingface.co/new-space](https://huggingface.co/new-space) with the **Gradio** SDK and **CPU basic** hardware.
-2. In the Space's **Settings → Variables and secrets**, add the secret `GROQ_API_KEY`.
-3. Push this repo to it:
-   ```bash
-   git remote add space https://huggingface.co/spaces/<your-username>/mood-story
-   git push space main
-   ```
+```bash
+pip install -r requirements-dev.txt
+modal setup                                   # log in once
+f=$(mktemp) && grep '^GROQ_API_KEY=' .env > "$f" && modal secret create mood-story --from-dotenv "$f"; rm -f "$f"
+modal deploy deploy/modal_app.py              # prints the public URL
+```
+
+[`deploy/modal_app.py`](deploy/modal_app.py) installs the same locked dependencies (with the CUDA build of PyTorch) and bakes the models into the image so cold starts don't download them.
+
+**Hugging Face Spaces** also works with the YAML header at the top of this file (add `GROQ_API_KEY` as a secret), but hosting a Gradio Space now requires an HF PRO subscription.
 
 ### Settings
 
@@ -154,7 +157,7 @@ The YAML header at the top of this file is the Space config; the free **CPU basi
 | `TEXT_PROVIDER` / `IMAGE_PROVIDER` | `groq` / `sd-turbo` | Use `hf` for Hugging Face Inference Providers (needs `HF_TOKEN` and credits) |
 | `TEXT_MODEL` / `ANALYSIS_MODEL` | gpt-oss-120b / gpt-oss-20b | Story writer and JSON analysis models |
 | `TEXT_FALLBACK_MODELS` | gpt-oss-20b, Qwen3 | Comma-separated backups tried in order |
-| `CHAPTERS_PER_DAY` | `10` on Spaces | Per-visitor daily cap (`0` = unlimited) |
+| `CHAPTERS_PER_DAY` | `10` on Spaces and Modal | Per-visitor daily cap (`0` = unlimited) |
 | `REQUIRE_LOGIN` | on only with `TEXT_PROVIDER=hf` | Visitors sign in so inference uses their own HF credits |
 | `FILE_RETENTION_HOURS` | `24` | Generated images, audio and exports older than this are deleted |
 
@@ -181,6 +184,7 @@ mood-story-rag/
 ├── data/
 │   ├── sample_lore/       # The sample world, also used by the retrieval evaluation
 │   └── showcase/          # The "Read an example" story
+├── deploy/modal_app.py    # Modal hosting
 ├── eval/                  # Retrieval and story-quality evaluations, with results
 ├── scripts/               # make_showcase.py
 ├── tests/                 # Offline test suite (fake models)

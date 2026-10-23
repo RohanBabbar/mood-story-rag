@@ -3,3 +3,5 @@
 uv
 pytest
 ruff
+# Deploys the app to Modal (deploy/modal_app.py).
+modal
