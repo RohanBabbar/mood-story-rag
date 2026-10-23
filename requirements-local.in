@@ -2,7 +2,5 @@
 # Constrained to the versions locked in requirements.txt so both modes run the same core packages.
 -c requirements.txt
 -r requirements.in
-transformers
-diffusers
 accelerate
 peft

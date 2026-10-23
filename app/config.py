@@ -31,10 +31,20 @@ TEXT_MODEL = os.getenv("TEXT_MODEL", _TEXT_DEFAULTS.get(TEXT_PROVIDER, _TEXT_DEF
 # The JSON analysis (summary, cast, scene, choices) is an easier job, so on Groq a smaller, faster
 # model does it; this also keeps it off the story model's per-model rate limit.
 ANALYSIS_MODEL = os.getenv("ANALYSIS_MODEL", "openai/gpt-oss-20b" if TEXT_PROVIDER == "groq" else TEXT_MODEL)
-IMAGE_MODEL = os.getenv(
-    "IMAGE_MODEL",
-    "black-forest-labs/FLUX.1-schnell" if BACKEND == "api" else "stable-diffusion-v1-5/stable-diffusion-v1-5",
-)
+
+# Who draws the illustrations:
+# "hf"       -> Hugging Face Inference Providers (FLUX; needs HF credits)
+# "sd-turbo" -> SD-Turbo in this process: one denoising step, fast enough for a free CPU Space
+#               (~30 s per picture), so it is the default alongside Groq, which has no image models
+# "local"    -> Stable Diffusion 1.5 on this machine's GPU
+IMAGE_PROVIDER = "local" if BACKEND == "local" else os.getenv(
+    "IMAGE_PROVIDER", "sd-turbo" if TEXT_PROVIDER == "groq" else "hf").lower()
+_IMAGE_DEFAULTS = {
+    "hf": "black-forest-labs/FLUX.1-schnell",
+    "sd-turbo": "stabilityai/sd-turbo",
+    "local": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+}
+IMAGE_MODEL = os.getenv("IMAGE_MODEL", _IMAGE_DEFAULTS.get(IMAGE_PROVIDER, _IMAGE_DEFAULTS["hf"]))
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # Optional LoRA adapter applied on top of the local base model; when set, the UI offers a

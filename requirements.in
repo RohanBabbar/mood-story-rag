@@ -1,7 +1,7 @@
 # Direct dependencies of the app. Edit this file, then regenerate the lock:
 #   uv pip compile requirements.in --universal --python-version 3.12 \
 #     --index-strategy unsafe-best-match --emit-index-url -o requirements.txt
-# CPU-only PyTorch keeps the Space image small (torch is only used for embeddings).
+# CPU-only PyTorch keeps the Space image small (torch runs the embeddings and SD-Turbo on CPU).
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 gradio>=6.0,<7
@@ -12,4 +12,7 @@ numpy
 pypdf
 gTTS
 Pillow
+# SD-Turbo illustrations (IMAGE_PROVIDER=sd-turbo, the default with Groq)
+diffusers
+transformers
 python-dotenv

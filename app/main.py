@@ -17,6 +17,7 @@ from app.config import (
     CHAPTERS_PER_DAY,
     FILE_RETENTION_HOURS,
     IMAGE_MODEL,
+    IMAGE_PROVIDER,
     MAX_LORE_FILE_MB,
     MAX_LORE_FILES,
     MAX_LORE_WORDS,
@@ -41,6 +42,7 @@ from app.multimodal import (
     first_sentences,
     generate_image,
     generate_narration,
+    load_image_pipeline,
 )
 from app.rag_pipeline import build_faiss_index, get_embedder, retrieve_context
 from app.safety import check_prompt
@@ -434,6 +436,8 @@ CSS = (Path(__file__).parent / "style.css").read_text()
 
 def create_app():
     credits = f"{TEXT_MODEL.split('/')[-1]} + {IMAGE_MODEL.split('/')[-1]}, MiniLM + FAISS for lore"
+    # The Llama license asks apps built on it to say so.
+    llama_notice = " · Built with Llama" if "llama" in TEXT_MODEL.lower() else ""
 
     # Uploaded lore files live in Gradio's cache; clear them out on the same schedule as our own files.
     retention = int(FILE_RETENTION_HOURS * 3600)
@@ -492,7 +496,7 @@ def create_app():
                 download_output = gr.File(label="Your story", visible=False)
 
         gr.HTML(
-            f'<footer class="colophon"><p>made by Rohan Babbar · {html.escape(credits)} · Built with Llama</p>'
+            f'<footer class="colophon"><p>made by Rohan Babbar · {html.escape(credits)}{llama_notice}</p>'
             "<p>Stories and pictures are AI-generated and can be odd or wrong. Please keep it general-audience.</p>"
             "</footer>"
         )
@@ -525,8 +529,11 @@ def _housekeeping():
 
 def launch():
     threading.Thread(target=_housekeeping, daemon=True).start()
-    # Load the embedding model now rather than on the first lore upload.
+    # Load the embedding model now rather than on the first lore upload, and the image model rather
+    # than on the first picture (a ~5 GB download on a fresh Space).
     threading.Thread(target=get_embedder, daemon=True).start()
+    if IMAGE_PROVIDER != "hf":
+        threading.Thread(target=load_image_pipeline, daemon=True).start()
     create_app().queue().launch(theme=THEME, css=CSS, head=HEAD, allowed_paths=[str(OUTPUT_DIR)],
                                 footer_links=[], max_file_size=f"{MAX_LORE_FILE_MB}mb")
 

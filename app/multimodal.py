@@ -1,8 +1,9 @@
 import re
+import threading
 import uuid
 from functools import lru_cache
 
-from app.config import BACKEND, IMAGE_FALLBACK_MODELS, IMAGE_MODEL, OUTPUT_DIR
+from app.config import IMAGE_FALLBACK_MODELS, IMAGE_MODEL, IMAGE_PROVIDER, OUTPUT_DIR
 
 NO_ILLUSTRATIONS = "No illustrations"
 
@@ -40,7 +41,12 @@ def build_image_prompt(scene, genre, mood, style=DEFAULT_ART_STYLE, characters=(
         else:
             scene += f" Also in the scene: {described}."
     style_prompt = ART_STYLES.get(style) or ART_STYLES[DEFAULT_ART_STYLE]
-    return f"{scene[:600]} {style_prompt}, {genre.lower()} story, {mood.lower()} atmosphere"
+    # Stable Diffusion models only read the first 77 tokens, so the core of the style ("watercolor
+    # illustration") goes first, then the scene, and the finer style details last, where they are
+    # the first thing dropped.
+    style_head, _, style_rest = style_prompt.partition(", ")
+    tail = ", ".join(t for t in (style_rest, f"{genre.lower()} story", f"{mood.lower()} atmosphere") if t)
+    return f"{style_head}. {scene[:600]} {tail}"
 
 
 def _with_article(phrase):
@@ -57,7 +63,7 @@ def first_sentences(text, n=2):
 def generate_image(scene, genre, mood, style=DEFAULT_ART_STYLE, characters=(), token=None):
     """Illustrate a scene. Returns the image path, or raises on failure."""
     prompt = build_image_prompt(scene, genre, mood, style, characters)
-    image = _generate_local(prompt) if BACKEND == "local" else _generate_api(prompt, token)
+    image = _generate_api(prompt, token) if IMAGE_PROVIDER == "hf" else _generate_in_process(prompt)
     path = OUTPUT_DIR / f"illustration_{uuid.uuid4().hex[:10]}.jpg"
     image.convert("RGB").save(path, quality=90)
     return str(path)
@@ -83,10 +89,21 @@ def _generate_api(prompt, token=None):
     raise error
 
 
+# SD-Turbo is distilled to draw in a single step and without classifier-free guidance; regular
+# Stable Diffusion needs ~20 steps (a good speed/quality trade-off versus the default 50).
+PIPELINE_SETTINGS = {
+    "sd-turbo": {"num_inference_steps": 1, "guidance_scale": 0.0},
+    "local": {"num_inference_steps": 20},
+}
+
+# One picture at a time: parallel runs on a small CPU only slow each other down and multiply memory.
+_pipeline_lock = threading.Lock()
+
+
 @lru_cache(maxsize=1)
-def _load_local_pipeline():
+def load_image_pipeline():
     import torch
-    from diffusers import StableDiffusionPipeline
+    from diffusers import AutoPipelineForText2Image
 
     if torch.cuda.is_available():
         device = "cuda"
@@ -94,16 +111,18 @@ def _load_local_pipeline():
         device = "mps"
     else:
         device = "cpu"
-    pipe = StableDiffusionPipeline.from_pretrained(
-        IMAGE_MODEL, torch_dtype=torch.float16 if device != "cpu" else torch.float32
+    pipe = AutoPipelineForText2Image.from_pretrained(
+        IMAGE_MODEL, dtype=torch.float16 if device != "cpu" else torch.float32
     ).to(device)
     pipe.enable_attention_slicing()
+    pipe.set_progress_bar_config(disable=True)
     return pipe
 
 
-def _generate_local(prompt):
-    # 20 steps is a good speed/quality trade-off versus the default 50.
-    return _load_local_pipeline()(prompt, num_inference_steps=20, width=768, height=512).images[0]
+def _generate_in_process(prompt):
+    settings = PIPELINE_SETTINGS.get(IMAGE_PROVIDER, PIPELINE_SETTINGS["local"])
+    with _pipeline_lock:
+        return load_image_pipeline()(prompt, width=768, height=512, **settings).images[0]
 
 
 def generate_narration(text):
