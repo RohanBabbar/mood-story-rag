@@ -19,7 +19,7 @@ hf_oauth_scopes:
   <h1>🎭 Mood Story RAG</h1>
   <p><b>An illustrated, episodic storyteller that keeps your world's lore straight.</b></p>
 
-  <p><a href="https://huggingface.co/spaces/RohanBabbar/mood-story"><b>▶ Try it live on Hugging Face Spaces</b></a> (no sign-in needed)</p>
+  <p><a href="https://rohanbabbar913--mood-story-web.us-east.modal.run"><b>▶ Try it live</b></a> (no sign-in needed; the first visit after a quiet spell takes ~30 s to wake up)</p>
 
   [![CI](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml)
   [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
@@ -134,17 +134,20 @@ pip install -r requirements-local.txt
 MODEL_BACKEND=local python run.py
 ```
 
-## ☁️ Deploy to Hugging Face Spaces
+## ☁️ Deploy
 
-The YAML header at the top of this file is the Space config; the free **CPU basic** hardware is enough.
+The live demo runs on [Modal](https://modal.com): a 4-core CPU container that starts when someone opens the page and shuts down after 5 idle minutes, which fits in the free Starter plan's $30 of monthly credits. The first visit after a pause takes about a minute to wake up. Text comes from Groq and appears in about 2 seconds; the CPU draws each picture with SD-Turbo in about 30 seconds while the chapter is already on screen.
 
-1. Create a Space at [huggingface.co/new-space](https://huggingface.co/new-space) with the **Gradio** SDK and **CPU basic** hardware.
-2. In the Space's **Settings → Variables and secrets**, add the secret `GROQ_API_KEY`.
-3. Push this repo to it:
-   ```bash
-   git remote add space https://huggingface.co/spaces/<your-username>/mood-story
-   git push space main
-   ```
+```bash
+pip install -r requirements-dev.txt
+modal setup                                   # log in once
+f=$(mktemp) && grep '^GROQ_API_KEY=' .env > "$f" && modal secret create mood-story --from-dotenv "$f"; rm -f "$f"
+modal deploy deploy/modal_app.py              # prints the public URL
+```
+
+[`deploy/modal_app.py`](deploy/modal_app.py) installs the same locked dependencies and bakes the models into the image so cold starts don't download them.
+
+**Hugging Face Spaces** also works with the YAML header at the top of this file (add `GROQ_API_KEY` as a secret), but hosting a Gradio Space now requires an HF PRO subscription.
 
 ### Settings
 
@@ -154,7 +157,7 @@ The YAML header at the top of this file is the Space config; the free **CPU basi
 | `TEXT_PROVIDER` / `IMAGE_PROVIDER` | `groq` / `sd-turbo` | Use `hf` for Hugging Face Inference Providers (needs `HF_TOKEN` and credits) |
 | `TEXT_MODEL` / `ANALYSIS_MODEL` | gpt-oss-120b / gpt-oss-20b | Story writer and JSON analysis models |
 | `TEXT_FALLBACK_MODELS` | gpt-oss-20b, Qwen3 | Comma-separated backups tried in order |
-| `CHAPTERS_PER_DAY` | `10` on Spaces | Per-visitor daily cap (`0` = unlimited) |
+| `CHAPTERS_PER_DAY` | `10` on Spaces and Modal | Per-visitor daily cap (`0` = unlimited) |
 | `REQUIRE_LOGIN` | on only with `TEXT_PROVIDER=hf` | Visitors sign in so inference uses their own HF credits |
 | `FILE_RETENTION_HOURS` | `24` | Generated images, audio and exports older than this are deleted |
 
@@ -181,6 +184,7 @@ mood-story-rag/
 ├── data/
 │   ├── sample_lore/       # The sample world, also used by the retrieval evaluation
 │   └── showcase/          # The "Read an example" story
+├── deploy/modal_app.py    # Modal hosting
 ├── eval/                  # Retrieval and story-quality evaluations, with results
 ├── scripts/               # make_showcase.py
 ├── tests/                 # Offline test suite (fake models)

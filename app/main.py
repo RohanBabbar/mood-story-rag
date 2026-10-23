@@ -564,15 +564,25 @@ def _housekeeping():
         time.sleep(3600)
 
 
-def launch():
+def start_background_tasks():
     threading.Thread(target=_housekeeping, daemon=True).start()
     # Load the embedding model now rather than on the first lore upload, and the image model rather
-    # than on the first picture (a ~5 GB download on a fresh Space).
+    # than on the first picture (a ~5 GB download on a fresh server).
     threading.Thread(target=get_embedder, daemon=True).start()
     if IMAGE_PROVIDER != "hf":
         threading.Thread(target=load_image_pipeline, daemon=True).start()
-    create_app().queue().launch(theme=THEME, css=CSS, head=HEAD, allowed_paths=[str(OUTPUT_DIR), str(SHOWCASE_DIR)],
-                                footer_links=[], max_file_size=f"{MAX_LORE_FILE_MB}mb")
+
+
+# Shared by launch() and by hosts that mount the app into their own web server (deploy/modal_app.py).
+SERVER_OPTIONS = {
+    "theme": THEME, "css": CSS, "head": HEAD, "footer_links": [],
+    "allowed_paths": [str(OUTPUT_DIR), str(SHOWCASE_DIR)], "max_file_size": f"{MAX_LORE_FILE_MB}mb",
+}
+
+
+def launch():
+    start_background_tasks()
+    create_app().queue().launch(**SERVER_OPTIONS)
 
 
 if __name__ == "__main__":
