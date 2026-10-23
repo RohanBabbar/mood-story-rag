@@ -19,7 +19,7 @@ hf_oauth_scopes:
   <h1>🎭 Mood Story RAG</h1>
   <p><b>An illustrated, episodic storyteller that keeps your world's lore straight.</b></p>
 
-  <p><a href="https://huggingface.co/spaces/RohanBabbar/mood-story"><b>▶ Try it live on Hugging Face Spaces</b></a> (no sign-in needed)</p>
+  <p><a href="https://rohanbabbar913--mood-story-web.us-east.modal.run"><b>▶ Try it live</b></a> (no sign-in needed; the first visit after a quiet spell takes ~30 s to wake up)</p>
 
   [![CI](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml)
   [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
@@ -136,7 +136,7 @@ MODEL_BACKEND=local python run.py
 
 ## ☁️ Deploy
 
-The live demo runs on [Modal](https://modal.com): a 4-core CPU container that starts when someone opens the page and shuts down after 5 idle minutes, which fits in the free Starter plan's $30 of monthly credits. The first visit after a pause takes about a minute to wake up. Text comes from Groq; the CPU draws each picture with SD-Turbo while the chapter is already on screen.
+The live demo runs on [Modal](https://modal.com): a 4-core CPU container that starts when someone opens the page and shuts down after 5 idle minutes, which fits in the free Starter plan's $30 of monthly credits. The first visit after a pause takes about a minute to wake up. Text comes from Groq and appears in about 2 seconds; the CPU draws each picture with SD-Turbo in about 30 seconds while the chapter is already on screen.
 
 ```bash
 pip install -r requirements-dev.txt
