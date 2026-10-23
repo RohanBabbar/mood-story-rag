@@ -1,4 +1,5 @@
 import html
+import json
 import random
 import threading
 import time
@@ -17,12 +18,14 @@ from app.config import (
     CHAPTERS_PER_DAY,
     FILE_RETENTION_HOURS,
     IMAGE_MODEL,
+    IMAGE_PROVIDER,
     MAX_LORE_FILE_MB,
     MAX_LORE_FILES,
     MAX_LORE_WORDS,
     MAX_PROMPT_CHARS,
     OUTPUT_DIR,
     REQUIRE_LOGIN,
+    ROOT_DIR,
     TEXT_MODEL,
 )
 from app.llm import (
@@ -41,6 +44,7 @@ from app.multimodal import (
     first_sentences,
     generate_image,
     generate_narration,
+    load_image_pipeline,
 )
 from app.rag_pipeline import build_faiss_index, get_embedder, retrieve_context
 from app.safety import check_prompt
@@ -74,6 +78,16 @@ EMPTY_STORY = """
 NO_LORE_STATUS = "No lore loaded. The story can invent its own world."
 
 FINE_TUNED, BASE_MODEL = "Fine-tuned (LoRA)", "Base model"
+
+# A ready-made world and a finished example story, so a first-time visitor sees what the app does
+# without inventing a premise or writing lore. The example is made by scripts/make_showcase.py.
+SAMPLE_LORE = sorted((ROOT_DIR / "data" / "sample_lore").glob("*.md"))
+SAMPLE_PREMISE = (
+    "Lila's moon bread has stopped rising, and the only cure is a song from the caves beneath Mount Ardent.",
+    "Fantasy",
+    "Whimsical",
+)
+SHOWCASE_DIR = ROOT_DIR / "data" / "showcase"
 
 
 def new_story():
@@ -375,6 +389,25 @@ def export_story(story):
     return gr.update(value=str(zip_path), visible=True)
 
 
+def load_sample_world():
+    lore, status = process_lore([str(p) for p in SAMPLE_LORE])
+    premise, genre, mood = SAMPLE_PREMISE
+    status = "Sample world loaded: Veyra and the desert city of Qasr-Amun. " + status
+    return lore, status, True, premise, genre, mood
+
+
+def load_showcase():
+    """Show the example story, with its world loaded so it can be continued."""
+    story = json.loads((SHOWCASE_DIR / "story.json").read_text())
+    for chapter in story["chapters"]:
+        if chapter["image"]:
+            chapter["image"] = str(SHOWCASE_DIR / chapter["image"])
+    first = story["chapters"][0]
+    lore, status, use_lore, *_ = load_sample_world()
+    return (*story_view(story, prompt=gr.update(value="", placeholder=NEXT_PLACEHOLDER)),
+            lore, status, use_lore, first["genre"], first["mood"], first["style"])
+
+
 def reset_story():
     return (
         *story_view(new_story(), prompt=gr.update(value="", placeholder=PROMPT_PLACEHOLDER)),
@@ -434,6 +467,8 @@ CSS = (Path(__file__).parent / "style.css").read_text()
 
 def create_app():
     credits = f"{TEXT_MODEL.split('/')[-1]} + {IMAGE_MODEL.split('/')[-1]}, MiniLM + FAISS for lore"
+    # The Llama license asks apps built on it to say so.
+    llama_notice = " · Built with Llama" if "llama" in TEXT_MODEL.lower() else ""
 
     # Uploaded lore files live in Gradio's cache; clear them out on the same schedule as our own files.
     retention = int(FILE_RETENTION_HOURS * 3600)
@@ -465,7 +500,10 @@ def create_app():
                                        visible=bool(ADAPTER_REPO))
 
                 write_btn = gr.Button("Start the story", variant="primary")
-                random_btn = gr.Button("Random idea", size="sm", elem_classes="quiet")
+                with gr.Row():
+                    random_btn = gr.Button("Random idea", size="sm", elem_classes="quiet", min_width=80)
+                    sample_btn = gr.Button("Try a sample world", size="sm", elem_classes="quiet", min_width=80)
+                    showcase_btn = gr.Button("Read an example", size="sm", elem_classes="quiet", min_width=80)
 
                 with gr.Accordion("World lore", open=False, elem_classes="lore"):
                     gr.Markdown("Upload notes about your world (PDF, TXT or MD). The most relevant bits are "
@@ -492,7 +530,7 @@ def create_app():
                 download_output = gr.File(label="Your story", visible=False)
 
         gr.HTML(
-            f'<footer class="colophon"><p>made by Rohan Babbar · {html.escape(credits)} · Built with Llama</p>'
+            f'<footer class="colophon"><p>made by Rohan Babbar · {html.escape(credits)}{llama_notice}</p>'
             "<p>Stories and pictures are AI-generated and can be odd or wrong. Please keep it general-audience.</p>"
             "</footer>"
         )
@@ -509,6 +547,9 @@ def create_app():
             button.click(follow_choice, inputs=[button, *settings], outputs=outputs,
                          concurrency_limit=concurrency, concurrency_id="write")
         random_btn.click(random_idea, outputs=[prompt_input, genre_input, mood_input])
+        lore_inputs = [lore_state, lore_status, use_lore]
+        sample_btn.click(load_sample_world, outputs=[*lore_inputs, prompt_input, genre_input, mood_input])
+        showcase_btn.click(load_showcase, outputs=[*outputs, *lore_inputs, genre_input, mood_input, art_style_input])
         lore_upload.change(process_lore, inputs=lore_upload, outputs=[lore_state, lore_status])
         narrate_btn.click(narrate_latest, inputs=story_state, outputs=audio_output)
         export_btn.click(export_story, inputs=story_state, outputs=download_output)
@@ -525,9 +566,12 @@ def _housekeeping():
 
 def launch():
     threading.Thread(target=_housekeeping, daemon=True).start()
-    # Load the embedding model now rather than on the first lore upload.
+    # Load the embedding model now rather than on the first lore upload, and the image model rather
+    # than on the first picture (a ~5 GB download on a fresh Space).
     threading.Thread(target=get_embedder, daemon=True).start()
-    create_app().queue().launch(theme=THEME, css=CSS, head=HEAD, allowed_paths=[str(OUTPUT_DIR)],
+    if IMAGE_PROVIDER != "hf":
+        threading.Thread(target=load_image_pipeline, daemon=True).start()
+    create_app().queue().launch(theme=THEME, css=CSS, head=HEAD, allowed_paths=[str(OUTPUT_DIR), str(SHOWCASE_DIR)],
                                 footer_links=[], max_file_size=f"{MAX_LORE_FILE_MB}mb")
 
 

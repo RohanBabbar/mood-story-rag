@@ -128,13 +128,14 @@ def chunk(text):
 class FakeClient:
     """Stands in for InferenceClient. `failures` maps model name -> HTTP status or "midway"."""
 
-    failures, calls, api_key = {}, [], None
+    failures, calls, api_key, base_url, extras = {}, [], None, None, []
 
-    def __init__(self, provider=None, api_key=None):
-        FakeClient.api_key = api_key
+    def __init__(self, provider=None, api_key=None, base_url=None):
+        FakeClient.api_key, FakeClient.base_url = api_key, base_url
 
-    def chat_completion(self, messages, model, **kwargs):
+    def chat_completion(self, messages, model, extra_body=None, **kwargs):
         FakeClient.calls.append(model)
+        FakeClient.extras.append(extra_body)
         failure = FakeClient.failures.get(model)
         if failure == "midway":
             def stream():
@@ -146,10 +147,10 @@ class FakeClient:
         return iter([chunk("Once "), chunk("upon a time.")])
 
 
-def stream_with(failures):
-    FakeClient.failures, FakeClient.calls = failures, []
+def stream_with(failures, primary=llm.TEXT_MODEL):
+    FakeClient.failures, FakeClient.calls, FakeClient.extras = failures, [], []
     with mock.patch("huggingface_hub.InferenceClient", FakeClient):
-        return "".join(llm._stream_api([], 10, 0.5, token="visitor-token"))
+        return "".join(llm._stream_api([], 10, 0.5, token="visitor-token", primary=primary))
 
 
 PRIMARY, BACKUP = llm.TEXT_MODEL, llm.TEXT_FALLBACK_MODELS[0]
@@ -177,6 +178,38 @@ def test_does_not_switch_models_halfway_through_a_chapter():
     with pytest.raises(llm.StoryError):
         stream_with({PRIMARY: "midway"})
     assert FakeClient.calls == [PRIMARY]
+
+
+@pytest.fixture
+def groq(monkeypatch):
+    monkeypatch.setattr(llm, "TEXT_PROVIDER", "groq")
+    monkeypatch.setattr(llm, "GROQ_API_KEY", "gsk_test_not_real")
+    monkeypatch.setattr(llm, "TEXT_FALLBACK_MODELS", ["openai/gpt-oss-20b", "qwen/qwen3.8-27b"])
+
+
+def test_groq_uses_the_server_key_not_the_visitors_token(groq):
+    assert stream_with({}, primary="openai/gpt-oss-120b") == "Once upon a time."
+    assert FakeClient.base_url == llm.GROQ_BASE_URL
+    assert FakeClient.api_key == "gsk_test_not_real"
+    assert FakeClient.extras == [{"reasoning_effort": "low"}]
+
+
+def test_groq_falls_back_on_a_per_model_rate_limit(groq):
+    # Groq's limits are per model, so unlike on HF a 429 is worth retrying on the next model.
+    assert stream_with({"openai/gpt-oss-120b": 429, "openai/gpt-oss-20b": 429},
+                       primary="openai/gpt-oss-120b") == "Once upon a time."
+    assert FakeClient.calls == ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
+    assert FakeClient.extras[-1] == {"reasoning_effort": "none"}
+
+
+def test_groq_errors_mention_groq_not_hugging_face(groq):
+    with pytest.raises(llm.StoryError, match="GROQ_API_KEY"):
+        stream_with({"openai/gpt-oss-120b": 401}, primary="openai/gpt-oss-120b")
+
+
+def test_hf_requests_send_no_provider_extras():
+    stream_with({})
+    assert FakeClient.extras == [None]
 
 
 # === Local model: adapter switch and background-thread failures ===

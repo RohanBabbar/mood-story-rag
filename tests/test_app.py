@@ -209,3 +209,23 @@ def test_lore_is_capped_at_the_word_limit(tmp_path, monkeypatch):
     lore, status = main.process_lore([str(path)])
     assert sum(len(c.split()) for c in lore.chunks) <= 50 + 30  # word cap plus chunk overlap
     assert "only the first 50 words are used" in status
+
+
+# === First-visit helpers: sample world and example story ===
+
+def test_sample_world_loads_lore_and_a_premise_from_it():
+    lore, status, use_lore, premise, *_ = main.load_sample_world()
+    assert lore is not None and use_lore
+    assert "Loaded 2 files" in status
+    # The premise names things only the sample lore explains, so the lore visibly matters.
+    assert "Mount Ardent" in premise and "moon bread" in premise
+
+
+def test_example_story_loads_with_its_pictures_and_can_be_continued():
+    story, *_ = out = main.load_showcase()
+    assert len(story["chapters"]) == 3
+    assert all(c["lore_used"] for c in story["chapters"])
+    images = [c["image"] for c in story["chapters"]]
+    assert all(img and main.Path(img).is_file() for img in images)
+    assert story["choices"], "the example should end with choices to continue from"
+    assert out[-5] is not None  # its world is loaded too

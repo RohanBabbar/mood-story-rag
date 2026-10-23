@@ -4,7 +4,16 @@ from contextlib import nullcontext
 from functools import lru_cache
 from threading import Thread
 
-from app.config import ADAPTER_REPO, BACKEND, TEXT_FALLBACK_MODELS, TEXT_MODEL
+from app.config import (
+    ADAPTER_REPO,
+    ANALYSIS_MODEL,
+    BACKEND,
+    GROQ_API_KEY,
+    GROQ_BASE_URL,
+    TEXT_FALLBACK_MODELS,
+    TEXT_MODEL,
+    TEXT_PROVIDER,
+)
 
 # Rough word targets per chapter; tokens are budgeted with headroom so endings aren't cut off.
 LENGTHS = {"Short": 150, "Medium": 280, "Long": 450}
@@ -31,7 +40,8 @@ def build_messages(prompt, genre, mood, lore_context="", previous_chapters=(), l
         "- Include at least one line of dialogue.\n"
         "- Never reuse distinctive phrases or images from earlier chapters.\n"
         f"- About {words} words, in short paragraphs.\n"
-        "Output only the story text: no title, no chapter heading, no notes or commentary. "
+        "Output only the story text as plain prose: no Markdown, no title, no chapter heading, no notes or "
+        "commentary. "
         "End on a moment that invites the story to continue.\n"
         "Keep it suitable for a general audience: no explicit sexual content and no graphic gore. "
         "Even in horror, imply violence rather than describe it in detail."
@@ -92,8 +102,11 @@ def trim_to_last_sentence(text):
     return text[:cut]
 
 
-def stream_chat(messages, max_tokens, temperature=0.85, token=None, repetition_penalty=1.0, use_adapter=False):
-    """`token` is the signed-in visitor's HF token; None falls back to the server's HF_TOKEN.
+def stream_chat(messages, max_tokens, temperature=0.85, token=None, repetition_penalty=1.0, use_adapter=False,
+                model=None):
+    """`token` is the signed-in visitor's HF token; None falls back to the server's HF_TOKEN. It is
+    ignored on Groq, which always uses the server's GROQ_API_KEY. `model` overrides TEXT_MODEL for
+    hosted backends.
 
     `repetition_penalty` and `use_adapter` only apply to local models. Keep the penalty at 1.0 for
     JSON output, whose brackets and quotes legitimately repeat; the adapter is off by default
@@ -102,7 +115,7 @@ def stream_chat(messages, max_tokens, temperature=0.85, token=None, repetition_p
     if BACKEND == "local":
         yield from _stream_local(messages, max_tokens, temperature, repetition_penalty, use_adapter)
     else:
-        yield from _stream_api(messages, max_tokens, temperature, token)
+        yield from _stream_api(messages, max_tokens, temperature, token, model or TEXT_MODEL)
 
 
 ANALYSIS_PROMPT = """Story summary before this chapter: {summary}
@@ -145,7 +158,7 @@ def analyze_chapter(chapter, summary="", cast=None, token=None):
             chapter=chapter,
         )},
     ]
-    reply = "".join(stream_chat(messages, max_tokens=600, temperature=0.4, token=token))
+    reply = "".join(stream_chat(messages, max_tokens=600, temperature=0.4, token=token, model=ANALYSIS_MODEL))
     match = re.search(r"\{.*\}", reply, re.DOTALL)
     try:
         data = json.loads(match.group(0)) if match else {}
@@ -176,8 +189,10 @@ def analyze_chapter(chapter, summary="", cast=None, token=None):
 
 
 # Statuses that mean "this model is unavailable", where a backup model may still work. Account problems
-# (401/402/403/429) would fail the same way on every model, so those aren't retried.
+# (401/402/403) would fail the same way on every model, so those aren't retried. Groq's rate limits
+# are per model, so there a 429 is worth retrying on the next model too.
 FALLBACK_STATUSES = {400, 404, 410, 422, 500, 502, 503, 504}
+GROQ_FALLBACK_STATUSES = FALLBACK_STATUSES | {429}
 
 
 def status_of(error):
@@ -188,17 +203,37 @@ def models_to_try(primary, fallbacks):
     return [primary] + [m for m in fallbacks if m != primary]
 
 
-def _stream_api(messages, max_tokens, temperature, token=None):
+def request_options(model):
+    """Provider-specific extras. gpt-oss and Qwen 3 think before answering; on Groq that thinking
+    arrives separately from the text and uses up the token budget, so keep it short or off.
+    """
+    if TEXT_PROVIDER != "groq":
+        return None
+    if model.startswith("openai/gpt-oss"):
+        return {"reasoning_effort": "low"}
+    if model.startswith("qwen/qwen3"):
+        return {"reasoning_effort": "none"}
+    return None
+
+
+def _stream_api(messages, max_tokens, temperature, token=None, primary=TEXT_MODEL):
     from huggingface_hub import InferenceClient
     from huggingface_hub.errors import HfHubHTTPError
 
-    client = InferenceClient(provider="auto", api_key=token)
+    if TEXT_PROVIDER == "groq":
+        # Groq speaks the OpenAI chat API, which InferenceClient can call directly.
+        client = InferenceClient(base_url=GROQ_BASE_URL, api_key=GROQ_API_KEY)
+        retry_statuses = GROQ_FALLBACK_STATUSES
+    else:
+        client = InferenceClient(provider="auto", api_key=token)
+        retry_statuses = FALLBACK_STATUSES
     error = None
-    for model in models_to_try(TEXT_MODEL, TEXT_FALLBACK_MODELS):
+    for model in models_to_try(primary, TEXT_FALLBACK_MODELS):
         started = False
         try:
             for chunk in client.chat_completion(
-                messages, model=model, stream=True, max_tokens=max_tokens, temperature=temperature, top_p=0.95
+                messages, model=model, stream=True, max_tokens=max_tokens, temperature=temperature, top_p=0.95,
+                extra_body=request_options(model),
             ):
                 if chunk.choices and chunk.choices[0].delta.content:
                     started = True
@@ -208,10 +243,21 @@ def _stream_api(messages, max_tokens, temperature, token=None):
             error = e
             # Switching models halfway through a chapter would produce a jarring seam, so only
             # fall back before any text has been shown.
-            if started or status_of(e) not in FALLBACK_STATUSES:
+            if started or status_of(e) not in retry_statuses:
                 break
             print(f"[text] {model} failed with {status_of(e)}; trying the next model")
+    if TEXT_PROVIDER == "groq":
+        raise StoryError(explain_groq_error(error)) from error
     raise StoryError(explain_hf_error(error)) from error
+
+
+def explain_groq_error(e):
+    status = status_of(e)
+    if status == 401:
+        return "Groq rejected the API key. Set a valid GROQ_API_KEY."
+    if status == 429:
+        return "The free story models are busy right now. Wait a minute and try again."
+    return f"Model request failed ({status or 'network error'}). Please try again."
 
 
 def explain_hf_error(e):

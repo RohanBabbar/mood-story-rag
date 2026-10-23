@@ -1,3 +1,5 @@
+import threading
+import time
 from typing import ClassVar
 from unittest import mock
 
@@ -19,8 +21,8 @@ def test_names_are_replaced_by_descriptions():
     prompt = mm.build_image_prompt("Lila shows Night the biscuits.", "Fantasy", "Hopeful",
                                    characters=[LILA, NIGHT])
     assert "Lila" not in prompt and "Night" not in prompt
-    assert prompt.startswith("a young girl (about twelve, curly brown hair) shows a black cat "
-                             "(glossy fur, green eyes) the biscuits.")
+    assert ("a young girl (about twelve, curly brown hair) shows a black cat "
+            "(glossy fur, green eyes) the biscuits.") in prompt
 
 
 def test_later_mentions_and_possessives_use_the_short_form():
@@ -34,15 +36,24 @@ def test_characters_missing_from_the_scene_are_still_described():
     assert "Also in the scene: an old sailor." in prompt
 
 
+def style_parts(style):
+    return mm.ART_STYLES[style].split(", ")
+
+
 def test_style_genre_and_mood_are_applied():
     prompt = mm.build_image_prompt("A storm rolls in.", "Fantasy", "Eerie", style="Pixel art")
-    assert mm.ART_STYLES["Pixel art"] in prompt
+    assert all(part in prompt for part in style_parts("Pixel art"))
     assert prompt.endswith("fantasy story, eerie atmosphere")
+
+
+def test_core_style_comes_first_because_sd_reads_only_77_tokens():
+    prompt = mm.build_image_prompt("A storm rolls in.", "Fantasy", "Eerie", style="Watercolor")
+    assert prompt.startswith(style_parts("Watercolor")[0] + ". A storm rolls in.")
 
 
 def test_unknown_style_uses_the_default():
     prompt = mm.build_image_prompt("A storm.", "Fantasy", "Eerie", style="Not a style")
-    assert mm.ART_STYLES[mm.DEFAULT_ART_STYLE] in prompt
+    assert prompt.startswith(style_parts(mm.DEFAULT_ART_STYLE)[0])
 
 
 # === Image generation via the hosted API ===
@@ -66,6 +77,47 @@ def test_images_are_3_by_2_and_fall_back_to_the_backup_model(output_dir):
         path = mm.generate_image("A storm.", "Fantasy", "Eerie")
     assert [model for model, _, _ in FakeImageClient.calls] == [mm.IMAGE_MODEL, mm.IMAGE_FALLBACK_MODELS[0]]
     assert Image.open(path).size == (1152, 768)
+
+
+# === Image generation in this process (SD-Turbo on a CPU Space) ===
+
+class FakePipeline:
+    """Stands in for a diffusers pipeline; records how often it ran at the same time."""
+
+    def __init__(self):
+        self.calls, self.running, self.most_at_once = [], 0, 0
+
+    def __call__(self, prompt, width, height, **settings):
+        self.running += 1
+        self.most_at_once = max(self.most_at_once, self.running)
+        time.sleep(0.05)
+        self.calls.append(settings)
+        self.running -= 1
+        return mock.Mock(images=[Image.new("RGB", (width, height))])
+
+
+@pytest.fixture
+def sd_turbo(monkeypatch, output_dir):
+    pipe = FakePipeline()
+    monkeypatch.setattr(mm, "IMAGE_PROVIDER", "sd-turbo")
+    monkeypatch.setattr(mm, "load_image_pipeline", lambda: pipe)
+    return pipe
+
+
+def test_sd_turbo_draws_in_one_step_without_guidance(sd_turbo):
+    path = mm.generate_image("A storm.", "Fantasy", "Eerie")
+    assert sd_turbo.calls == [{"num_inference_steps": 1, "guidance_scale": 0.0}]
+    assert Image.open(path).size == (768, 512)
+
+
+def test_in_process_pictures_are_drawn_one_at_a_time(sd_turbo):
+    threads = [threading.Thread(target=mm.generate_image, args=("A storm.", "Fantasy", "Eerie")) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(sd_turbo.calls) == 3
+    assert sd_turbo.most_at_once == 1
 
 
 # === Safety ===

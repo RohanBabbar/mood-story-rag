@@ -36,12 +36,15 @@ colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   tqdm
     #   typer
+diffusers==0.41.0
+    # via -r requirements.in
 faiss-cpu==1.15.1
     # via -r requirements.in
 fastapi==0.159.1
     # via gradio
 filelock==4.2.4
     # via
+    #   diffusers
     #   huggingface-hub
     #   torch
 fsspec==2026.9.0
@@ -78,6 +81,7 @@ httpx==0.28.1
 huggingface-hub==1.33.0
     # via
     #   -r requirements.in
+    #   diffusers
     #   gradio
     #   gradio-client
     #   sentence-transformers
@@ -88,6 +92,8 @@ idna==3.20
     #   anyio
     #   httpx
     #   requests
+importlib-metadata==9.1.0
+    # via diffusers
 jinja2==3.1.6
     # via
     #   gradio
@@ -111,6 +117,7 @@ networkx==3.7
 numpy==2.5.4
     # via
     #   -r requirements.in
+    #   diffusers
     #   faiss-cpu
     #   gradio
     #   pandas
@@ -134,6 +141,7 @@ pandas==3.0.6
 pillow==12.3.0
     # via
     #   -r requirements.in
+    #   diffusers
     #   gradio
 pydantic==2.14.1
     # via
@@ -161,15 +169,21 @@ pyyaml==6.0.3
     #   huggingface-hub
     #   transformers
 regex==2026.9.29
-    # via transformers
+    # via
+    #   diffusers
+    #   transformers
 requests==2.34.2
-    # via gtts
+    # via
+    #   diffusers
+    #   gtts
 rich==15.0.0
     # via typer
 safehttpx==0.1.7
     # via gradio
 safetensors==0.8.0
-    # via transformers
+    # via
+    #   diffusers
+    #   transformers
 scikit-learn==1.9.1
     # via sentence-transformers
 scipy==1.18.1
@@ -216,7 +230,9 @@ tqdm==4.70.1
     #   sentence-transformers
     #   transformers
 transformers==5.20.2
-    # via sentence-transformers
+    # via
+    #   -r requirements.in
+    #   sentence-transformers
 typer==0.27.3
     # via
     #   gradio
@@ -248,3 +264,5 @@ urllib3==2.8.0
     # via requests
 uvicorn==0.54.0
     # via gradio
+zipp==4.1.2
+    # via importlib-metadata

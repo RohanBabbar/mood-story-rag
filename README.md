@@ -19,6 +19,8 @@ hf_oauth_scopes:
   <h1>🎭 Mood Story RAG</h1>
   <p><b>An illustrated, episodic storyteller that keeps your world's lore straight.</b></p>
 
+  <p><a href="https://huggingface.co/spaces/RohanBabbar/mood-story"><b>▶ Try it live on Hugging Face Spaces</b></a> (no sign-in needed)</p>
+
   [![CI](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml)
   [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
   [![Gradio](https://img.shields.io/badge/UI-Gradio%206-ff69b4.svg)](https://gradio.app/)
@@ -27,27 +29,28 @@ hf_oauth_scopes:
 
 ---
 
+<p align="center"><img src="data/showcase/chapter_1.jpg" width="600" alt="Illustration from the example story"></p>
+
 ## 📖 Overview
 
-General-purpose LLMs are good storytellers, but they drift: names change, rules of the world get broken, and the tone wanders away from what you asked for. **Mood Story RAG** tackles this with two levers:
+General-purpose LLMs are good storytellers, but they drift: names change, the rules of the world get broken, and the tone wanders. **Mood Story RAG** keeps a story on track with:
 
-- **Knowledge via RAG:** upload your world's lore (PDF, TXT or Markdown). It is chunked, embedded and indexed with FAISS, and the most relevant passages are injected into every chapter as canon.
-- **Style via mood-conditioned prompting:** genre and mood shape word choice, pacing and imagery through a structured system prompt.
+- **Retrieval (RAG):** upload your world's lore (PDF, TXT or Markdown). It is chunked, embedded and indexed with FAISS, and the most relevant passages are fed to every chapter as canon.
+- **Story memory:** a running summary and a cast list with fixed character descriptions, reused by both the writer and the illustrator.
+- **A structured prompt:** genre, mood and explicit rules ("something must happen", "never reuse phrases from earlier chapters"), measured against the old prompt below.
 
-Each chapter streams in live, gets its own AI illustration, and can be narrated aloud. Continue the story chapter by chapter, steering what happens next, then export the whole thing.
+Each chapter streams in within a few seconds, gets its own illustration, can be narrated aloud, and ends with three suggested directions for the next one.
+
+**New here?** In the app, press **Read an example** for a finished three-chapter story, or **Try a sample world** to write in a ready-made world with its lore loaded.
 
 ## ✨ Features
 
-- **Episodic stories:** begin from a premise, then continue chapter by chapter, steering with your own direction or one of three suggested "what happens next" choices.
-- **Consistent characters:** a running cast list gives each character a fixed visual description that's reused in every illustration and fed back to the writer.
-- **Story so far:** a running summary at the end of the story, which also stands in for older chapters so long stories stay coherent.
-- **Art styles:** storybook painting, hand-drawn anime, watercolor, comic book, 3D animated, cinematic photo, oil, pixel art, or ink & charcoal.
-- **Lore-grounded generation (RAG):** multiple lore files, overlapping chunks, cosine-similarity retrieval with `all-MiniLM-L6-v2` + FAISS.
-- **Live streaming:** text appears as it's written.
-- **Illustrations:** each chapter's key moment is illustrated by FLUX.1-schnell (or Stable Diffusion locally).
-- **Narration:** text-to-speech for the latest chapter via gTTS.
-- **Export:** download the story as Markdown plus images in a `.zip`.
-- **Two backends:** hosted models via Hugging Face Inference Providers (no GPU needed), or fully local models.
+- **Episodic stories:** start from a premise, then continue chapter by chapter with your own direction or one of three suggested choices.
+- **Lore-grounded generation:** multiple lore files, overlapping chunks, cosine-similarity retrieval with `all-MiniLM-L6-v2` + FAISS. Chapters that used lore are marked.
+- **Consistent characters:** each character gets a fixed look (kind, age, hair, clothing, a distinctive feature) that is substituted for their name in every image prompt.
+- **Nine art styles,** or no illustrations at all.
+- **Live streaming, narration (gTTS) and export** to Markdown + images in a `.zip`.
+- **Built for a public demo:** model fallbacks, per-visitor daily limits, input size limits enforced on the server, automatic cleanup of generated files.
 
 ## 🏗️ Architecture
 
@@ -61,80 +64,105 @@ graph TD
     Embed --> FAISS[(FAISS index)]
 
     UI --> |Query| FAISS
-    FAISS --> |Top-k lore| Prompt[Chat prompt builder]
-    UI --> |Recent chapters| Prompt
+    FAISS --> |Top-4 lore passages| Prompt[Prompt builder]
+    UI --> |Recent chapters, summary, cast| Prompt
 
-    Prompt --> LLM[LLaMA 3.x Instruct<br>HF Inference or local]
+    Prompt --> LLM[gpt-oss-120b on Groq<br>fallbacks: gpt-oss-20b, Qwen3]
     LLM --> |Streamed chapter| Story[Storybook view]
-    Story --> |Opening scene| Img[FLUX.1-schnell / SD 1.5]
+    Story --> Analysis[gpt-oss-20b: summary, cast,<br>scene, next choices as JSON]
+    Analysis --> Img[SD-Turbo on CPU]
+    Analysis --> Story
     Story --> TTS[gTTS narration]
 ```
+
+## 📊 Evaluation
+
+Scripts and full results are in [`eval/`](eval/).
+
+**Retrieval** ([`eval/rag_eval.py`](eval/rag_eval.py)): 30 paraphrased questions over two lore files written with deliberately look-alike details (two queens, two guardians, two bakeries), so retrieval has to tell similar passages apart. The app's setting retrieves the answering passage in the top 4 for **83%** of questions while sending only 22% of the lore to the model. Overlapping chunks helped at every chunk size; `bge-small` was not consistently better than MiniLM at this sample size, so the smaller model stayed.
+
+**Prompt redesign** ([`eval/story_eval.py`](eval/story_eval.py)): old vs new prompt, 12 premises × 2 chapters each, same seeds, Llama-3.2-3B. Scored with simple text statistics and a zero-shot classifier (`bart-large-mnli`), so these are proxies for comparing versions, not absolute quality.
+
+| Metric | Old prompt | New prompt |
+|---|---|---|
+| Chapter 2 phrases copied from chapter 1 | 1.3% | **0.1%** |
+| Chapters with dialogue | 88% | **100%** |
+| Requested genre in classifier's top 3 | 50% | **67%** |
+| Requested mood in classifier's top 3 | 46% | 42% (within noise) |
+
+**The LoRA adapter.** The original college project fine-tuned Llama-3.2-3B with LoRA. Testing it with fixed seeds showed its output was *identical* to the base model's: its weight update is about 0.007% of the base weights, so it was effectively untrained. Rather than claim a fine-tune that does nothing, the app uses a stronger hosted model; adapter support stays available for the local backend (`ADAPTER_REPO`), with a toggle to compare base and fine-tuned output side by side.
+
+## 🧭 Design decisions
+
+- **Text on Groq's free tier.** gpt-oss-120b writes a chapter in 2–4 seconds at no cost to visitors, so the demo needs no sign-in. The JSON analysis runs on the smaller gpt-oss-20b, which also keeps it off the story model's rate limit; Groq's limits are per model, so a rate-limited model falls back to the next one.
+- **Images on the Space's own CPU.** There is no free hosted image API, so SD-Turbo draws each picture in a single step (under a minute on the free CPU), one at a time. The text is shown first and the picture fills in after. Stable Diffusion reads only 77 prompt tokens, so prompts lead with the core art style, then the scene with each character's look.
+- **Never switch models mid-chapter.** Fallbacks happen only before any text has streamed, so a chapter never has a seam where the voice changes.
+- **Safety in layers.** Unacceptable premises are refused, the writer is told to keep things general-audience, and illustration prompts are written by the model from the chapter, so a visitor's text never goes straight to the image model.
 
 ## 🚀 Run locally
 
 ```bash
-git clone https://github.com/yourusername/mood-story-rag.git
+git clone https://github.com/RohanBabbar/mood-story-rag.git
 cd mood-story-rag
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # then add your HF token
+cp .env.example .env   # then add your Groq API key
 python run.py
 ```
 
-Open http://localhost:7860.
+Open http://localhost:7860. A free Groq key is at [console.groq.com/keys](https://console.groq.com/keys). The first illustration downloads SD-Turbo (~5 GB).
 
-**Hugging Face token:** create a fine-grained token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) with **"Make calls to Inference Providers"** enabled, and put it in `.env` as `HF_TOKEN`.
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+ruff check . && pytest
+```
+
+The tests replace every model with a small fake, so they run in a couple of seconds with no network or API keys. CI runs them on every pull request.
 
 ### Dependencies
 
 `requirements*.txt` are lock files with every package pinned, so local runs and the Space install exactly the same versions. Edit the matching `requirements*.in` file instead, then regenerate the lock with the command at the top of the `.txt` file (needs `pip install -r requirements-dev.txt`). To upgrade a single package, add `--upgrade-package <name>` to that command.
 
-### Running models on your own machine
+### Running every model on your own machine
 
-To run LLaMA-3.2-3B and Stable Diffusion 1.5 locally instead (a GPU or Apple Silicon is strongly recommended):
+To run Llama-3.2-3B and Stable Diffusion 1.5 locally (a GPU or Apple Silicon is strongly recommended):
 
 ```bash
 pip install -r requirements-local.txt
 MODEL_BACKEND=local python run.py
 ```
 
-The LLaMA weights are gated: accept the license on the [model page](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) first. Models can be overridden with `TEXT_MODEL` and `IMAGE_MODEL`.
-
 ## ☁️ Deploy to Hugging Face Spaces
 
-This repo is ready to run as a Gradio Space on free CPU hardware (the YAML header above is the Space config).
+The YAML header at the top of this file is the Space config; the free **CPU basic** hardware is enough.
 
-1. Create a new Space at [huggingface.co/new-space](https://huggingface.co/new-space) with the **Gradio** SDK and **CPU basic** hardware.
-2. Push this repo to the Space:
+1. Create a Space at [huggingface.co/new-space](https://huggingface.co/new-space) with the **Gradio** SDK and **CPU basic** hardware.
+2. In the Space's **Settings → Variables and secrets**, add the secret `GROQ_API_KEY`.
+3. Push this repo to it:
    ```bash
    git remote add space https://huggingface.co/spaces/<your-username>/mood-story
    git push space main
    ```
 
-**Who pays for inference.** By default, visitors to the Space must sign in with Hugging Face, and their chapters run on *their own* free inference credits (the `hf_oauth` settings above). Your account isn't charged for other people's stories.
-
-To let people use it without signing in, add these in the Space's **Settings → Variables and secrets**:
-
-| Name | Type | Value |
-|---|---|---|
-| `HF_TOKEN` | Secret | your token (with Inference Providers permission); this account pays for everyone |
-| `REQUIRE_LOGIN` | Variable | `false` |
-| `CHAPTERS_PER_DAY` | Variable | per-visitor daily cap, default `10` (`0` = unlimited) |
-
-### Other settings
+### Settings
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `TEXT_MODEL` / `IMAGE_MODEL` | Llama-3.1-8B-Instruct / FLUX.1-schnell | Main models |
-| `TEXT_FALLBACK_MODELS` / `IMAGE_FALLBACK_MODELS` | Llama-3.3-70B-Instruct / SDXL base | Comma-separated backups used if the main model is unavailable |
+| `GROQ_API_KEY` | none | Groq key; when set, text runs on Groq and no sign-in is needed |
+| `TEXT_PROVIDER` / `IMAGE_PROVIDER` | `groq` / `sd-turbo` | Use `hf` for Hugging Face Inference Providers (needs `HF_TOKEN` and credits) |
+| `TEXT_MODEL` / `ANALYSIS_MODEL` | gpt-oss-120b / gpt-oss-20b | Story writer and JSON analysis models |
+| `TEXT_FALLBACK_MODELS` | gpt-oss-20b, Qwen3 | Comma-separated backups tried in order |
+| `CHAPTERS_PER_DAY` | `10` on Spaces | Per-visitor daily cap (`0` = unlimited) |
+| `REQUIRE_LOGIN` | on only with `TEXT_PROVIDER=hf` | Visitors sign in so inference uses their own HF credits |
 | `FILE_RETENTION_HOURS` | `24` | Generated images, audio and exports older than this are deleted |
 
 ## ⚖️ Licenses & content
 
 - Code: MIT.
-- Text generation is **Built with Llama**: Llama 3.1 and 3.3 are under the [Llama Community License](https://www.llama.com/llama3_1/license/), which requires that attribution.
-- FLUX.1-schnell is Apache 2.0, and SDXL uses the CreativeML Open RAIL++-M license.
-- Stories are kept general-audience: the models are instructed to avoid explicit content and graphic gore, and clearly unacceptable prompts are refused. This isn't a full moderation system, so treat outputs as unreviewed AI content.
+- gpt-oss and Qwen3 are Apache 2.0. SD-Turbo is under the [Stability AI Community License](https://stability.ai/license). With `TEXT_PROVIDER=hf` or the local backend, text is **Built with Llama** under the Llama Community License.
+- Stories and pictures are AI-generated and unreviewed: the safety layers above reduce problems but are not a full moderation system.
 
 ## 📁 Repository structure
 
@@ -144,16 +172,19 @@ mood-story-rag/
 ├── app/
 │   ├── main.py            # Gradio UI and event handlers
 │   ├── style.css          # Storybook styling
-│   ├── config.py          # Env vars, backend + model selection
-│   ├── llm.py             # Prompt building and streaming generation
+│   ├── config.py          # Env vars, provider + model selection
+│   ├── llm.py             # Prompts, streaming generation, fallbacks, chapter analysis
 │   ├── rag_pipeline.py    # Embeddings, FAISS index, retrieval
-│   ├── safety.py          # Prompt blocklist
 │   ├── multimodal.py      # Illustrations and narration
+│   ├── safety.py          # Prompt blocklist
 │   └── utils.py           # Lore file parsing and chunking
-├── notebooks/
-│   └── exploration.ipynb  # Original Kaggle experiments (incl. LoRA fine-tuning)
-├── requirements.txt       # Hosted-API deployment
-└── requirements-local.txt # Extra deps for local models
+├── data/
+│   ├── sample_lore/       # The sample world, also used by the retrieval evaluation
+│   └── showcase/          # The "Read an example" story
+├── eval/                  # Retrieval and story-quality evaluations, with results
+├── scripts/               # make_showcase.py
+├── tests/                 # Offline test suite (fake models)
+└── notebooks/             # Original Kaggle experiments
 ```
 
 <p align="center"><i>Started as a college project exploring LoRA fine-tuning and RAG for controllable storytelling.</i></p>
