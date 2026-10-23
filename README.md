@@ -136,7 +136,7 @@ MODEL_BACKEND=local python run.py
 
 ## ☁️ Deploy
 
-The live demo runs on [Modal](https://modal.com): a T4 GPU that starts when someone opens the page and shuts down after 5 idle minutes, which fits in the free Starter plan's $30 of monthly credits. The first visit after a pause takes about a minute to wake up. Text comes from Groq either way; the GPU draws pictures in about a second.
+The live demo runs on [Modal](https://modal.com): a 4-core CPU container that starts when someone opens the page and shuts down after 5 idle minutes, which fits in the free Starter plan's $30 of monthly credits. The first visit after a pause takes about a minute to wake up. Text comes from Groq; the CPU draws each picture with SD-Turbo while the chapter is already on screen.
 
 ```bash
 pip install -r requirements-dev.txt
@@ -145,7 +145,7 @@ f=$(mktemp) && grep '^GROQ_API_KEY=' .env > "$f" && modal secret create mood-sto
 modal deploy deploy/modal_app.py              # prints the public URL
 ```
 
-[`deploy/modal_app.py`](deploy/modal_app.py) installs the same locked dependencies (with the CUDA build of PyTorch) and bakes the models into the image so cold starts don't download them.
+[`deploy/modal_app.py`](deploy/modal_app.py) installs the same locked dependencies and bakes the models into the image so cold starts don't download them.
 
 **Hugging Face Spaces** also works with the YAML header at the top of this file (add `GROQ_API_KEY` as a secret), but hosting a Gradio Space now requires an HF PRO subscription.
 

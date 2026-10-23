@@ -1,8 +1,9 @@
-"""Host the app on Modal: a T4 GPU that runs only while someone is using it.
+"""Host the app on Modal: a CPU container that runs only while someone is using it.
 
-Modal's free Starter plan includes $30 of compute a month; at ~$0.60/hour for a T4, that is ~50
-hours of uptime, and the container shuts down after 5 idle minutes. Text still comes from Groq;
-the GPU draws SD-Turbo pictures in about a second and runs the lore embeddings.
+Modal's free Starter plan includes $30 of compute a month; 4 CPU cores and 8 GB cost roughly
+$0.25/hour, so that is over 100 hours of uptime, and the container shuts down after 5 idle minutes.
+Text comes from Groq; the CPU draws SD-Turbo pictures and runs the lore embeddings. (A GPU would
+draw in about a second, but Modal requires a payment method for GPUs.)
 
 One-time setup (the secret holds only the Groq key, read from .env so it never appears on screen):
     modal setup
@@ -29,11 +30,8 @@ def download_models():
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    # The same locked versions as everywhere else...
+    # The same locked versions as everywhere else, including CPU-only PyTorch.
     .pip_install_from_requirements(str(ROOT / "requirements.txt"))
-    # ...except PyTorch: the lock has the CPU-only build for Linux, so swap in the CUDA build of the
-    # same version.
-    .pip_install("torch==2.14.1+cu126", index_url="https://download.pytorch.org/whl/cu126")
     .env({"HF_HOME": HF_CACHE, "CHAPTERS_PER_DAY": "10"})
     .run_function(download_models)
     # Only the code and data the app needs: never .env or anything else in the working tree. The
@@ -46,7 +44,8 @@ app = modal.App("mood-story", image=image)
 
 
 @app.function(
-    gpu="T4",
+    cpu=4,
+    memory=8 * 1024,
     secrets=[modal.Secret.from_name("mood-story")],
     # Gradio keeps each visitor's session in memory, so every request must reach the same container.
     max_containers=1,
