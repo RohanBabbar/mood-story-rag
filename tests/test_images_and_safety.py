@@ -56,6 +56,96 @@ def test_unknown_style_uses_the_default():
     assert prompt.startswith(style_parts(mm.DEFAULT_ART_STYLE)[0])
 
 
+# === Matching names in the scene to the cast ===
+
+MARA = ("Mara Lorn", "young cartographer, cropped brown hair, leather coat, scar above left eyebrow")
+VESH = ("Keeper Vesh", "guardian spirit, midnight blue cloak, glowing crescent")
+
+
+def test_first_name_alone_still_gets_the_description():
+    # The live bug: the cast said "Mara Lorn", the scene said "Mara", so she was drawn as a stranger.
+    prompt = mm.build_image_prompt("Mara holds a map.", "Adventure", "Epic", characters=[MARA])
+    assert "Mara" not in prompt
+    assert "a young cartographer (cropped brown hair, leather coat, scar above left eyebrow) holds a map." in prompt
+    assert "Also in the scene" not in prompt
+
+
+def test_titles_are_ignored_when_matching():
+    prompt = mm.build_image_prompt("Vesh raises a lantern.", "Fantasy", "Eerie", characters=[VESH])
+    assert "a guardian spirit (midnight blue cloak, glowing crescent) raises a lantern." in prompt
+    # A title on its own could be anyone, so it never matches.
+    assert mm.match_cast_name("the Keeper", ["Keeper Vesh"]) is None
+
+
+def test_only_whole_words_match():
+    prompt = mm.build_image_prompt("Annie waves at the planner.", "Drama", "Cozy", characters=[("Ann", "old woman")])
+    assert prompt.count("Annie") == 1 and "Also in the scene: an old woman." in prompt
+
+
+def test_the_longest_matching_name_wins():
+    cast = [("Mara", "young girl"), ("Mara Lorn", "old cartographer")]
+    prompt = mm.build_image_prompt("Mara Lorn hugs Mara.", "Drama", "Cozy", characters=cast)
+    assert "an old cartographer hugs a young girl." in prompt
+
+
+def test_a_word_shared_by_two_names_matches_neither():
+    cast = {"Mara Lorn": "young cartographer", "Ellis Lorn": "old sailor"}
+    assert mm.match_cast_name("Lorn", list(cast)) is None
+    assert mm.match_cast_name("Mara", list(cast)) == "Mara Lorn"
+    assert mm.match_cast_name("Captain Ellis", list(cast)) == "Ellis Lorn"
+    prompt = mm.build_image_prompt("Ellis shouts at Lorn.", "Drama", "Tense", characters=list(cast.items()))
+    assert "an old sailor shouts at Lorn." in prompt
+
+
+def test_scene_cast_uses_exact_names_and_falls_back_to_partial_ones():
+    cast = dict([MARA, VESH, ("Night", "black cat")])
+    # Mentioned characters come first, in order; listed-but-unmentioned ones follow; unknowns are dropped.
+    found = mm.scene_cast("Vesh bows to Mara.", ["Mara Lorn", "Night", "Stranger"], cast)
+    assert [name for name, _ in found] == ["Keeper Vesh", "Mara Lorn", "Night"]
+
+
+# === Fitting Stable Diffusion's 77-token window ===
+
+def words(text):
+    return len(text.split())
+
+
+CAST = [MARA, VESH, ("Night", "black cat, sleek black fur, red collar, one white paw")]
+SCENE = "Mara hands Vesh a glowing map while Night watches."
+
+
+def test_without_a_token_counter_nothing_is_dropped():
+    prompt = mm.build_image_prompt(SCENE, "Adventure", "Epic", "Watercolor", CAST)
+    assert prompt.endswith("adventure story, epic atmosphere") and "one white paw" in prompt
+
+
+def test_a_long_prompt_is_shrunk_until_it_fits():
+    full = mm.build_image_prompt(SCENE, "Adventure", "Epic", "Watercolor", CAST)
+    prompt = mm.build_image_prompt(SCENE, "Adventure", "Epic", "Watercolor", CAST, count_tokens=words, max_tokens=40)
+    assert words(full) > 40 >= words(prompt)
+    # The core style, the action and who is in it always survive.
+    assert prompt.startswith("loose watercolor illustration. a young cartographer (cropped brown hair")
+    assert "hands a guardian spirit" in prompt and "watches." in prompt
+    assert "Mara" not in prompt and "Vesh" not in prompt and "Night" not in prompt
+
+
+def test_least_important_parts_go_first():
+    full = mm.build_image_prompt(SCENE, "Adventure", "Epic", "Watercolor", CAST)
+    just_over = words(full) - 1
+    prompt = mm.build_image_prompt(SCENE, "Adventure", "Epic", "Watercolor", CAST, count_tokens=words,
+                                   max_tokens=just_over)
+    # Dropping genre and mood was enough: every character detail is still there.
+    assert "epic atmosphere" not in prompt and "one white paw" in prompt and "soft color washes" in prompt
+
+
+def test_sd_turbo_prompts_are_counted_with_the_models_tokenizer(sd_turbo, monkeypatch):
+    seen = []
+    monkeypatch.setattr(mm, "_generate_in_process", lambda prompt: seen.append(prompt) or Image.new("RGB", (8, 8)))
+    long_scene = " ".join(["Mara walks through the endless rain."] * 20)
+    mm.generate_image(long_scene, "Drama", "Melancholic", characters=[MARA])
+    assert "melancholic atmosphere" not in seen[0]  # shrinking kicked in
+
+
 # === Image generation via the hosted API ===
 
 class FakeImageClient:
@@ -86,6 +176,8 @@ class FakePipeline:
 
     def __init__(self):
         self.calls, self.running, self.most_at_once = [], 0, 0
+        # One token per word, plus the start and end markers a real CLIP tokenizer adds.
+        self.tokenizer = lambda text, **kwargs: mock.Mock(input_ids=[0, *text.split(), 0])
 
     def __call__(self, prompt, width, height, **settings):
         self.running += 1
