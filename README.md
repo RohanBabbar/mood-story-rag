@@ -19,7 +19,8 @@ hf_oauth_scopes:
   <h1>🎭 Mood Story RAG</h1>
   <p><b>An illustrated, episodic storyteller that keeps your world's lore straight.</b></p>
 
-  <p><a href="https://rohanbabbar913--mood-story-web.us-east.modal.run"><b>▶ Try it live</b></a> (no sign-in needed; the first visit after a quiet spell takes ~30 s to wake up)</p>
+  <p><a href="https://rohanbabbar913--mood-story-web.us-east.modal.run"><b>▶ Try it live</b></a> (no sign-in needed)</p>
+  <p>First load may take ~20 s while the app wakes up.</p>
 
   [![CI](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/RohanBabbar/mood-story-rag/actions/workflows/ci.yml)
   [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
