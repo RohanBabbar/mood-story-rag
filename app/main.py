@@ -612,7 +612,16 @@ def _housekeeping():
         time.sleep(3600)
 
 
+def configure_logging():
+    """Print this app's info lines (like each illustration's scene and prompt) but only warnings
+    from libraries, which would otherwise log every HTTP request."""
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("app").setLevel(logging.INFO)
+
+
 def start_background_tasks():
+    # Runs at startup both locally (launch) and on Modal (deploy/modal_app.py).
+    configure_logging()
     threading.Thread(target=_housekeeping, daemon=True).start()
     # Load the embedding model now rather than on the first lore upload, and the image model rather
     # than on the first picture (a ~5 GB download on a fresh server).
