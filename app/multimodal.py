@@ -206,8 +206,21 @@ PIPELINE_SETTINGS = {
 _pipeline_lock = threading.Lock()
 
 
-@lru_cache(maxsize=1)
+_load_lock = threading.Lock()
+
+
 def load_image_pipeline():
+    """The image model, loaded once.
+
+    The startup preload and the first visitor's request can ask for it at the same moment; without
+    the lock both would load it, doubling memory right after a cold start.
+    """
+    with _load_lock:
+        return _load_image_pipeline()
+
+
+@lru_cache(maxsize=1)
+def _load_image_pipeline():
     import torch
     from diffusers import AutoPipelineForText2Image
 

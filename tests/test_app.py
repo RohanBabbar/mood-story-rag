@@ -129,6 +129,39 @@ def test_a_premise_is_needed_to_start(fake_models):
     assert write("")["chapters"] == []
 
 
+def test_failed_illustration_keeps_the_chapter_with_a_friendly_message(fake_models, monkeypatch, caplog):
+    def broken_image(*args):
+        raise RuntimeError("CUDA out of memory at /root/app/secret_path.py")
+
+    warnings = []
+    monkeypatch.setattr(main, "generate_image", broken_image)
+    monkeypatch.setattr(main.gr, "Warning", warnings.append)
+    story = write("A door in the sea")
+    assert story["chapters"][0]["text"] and story["chapters"][0]["image"] is None
+    assert warnings == ["The illustration couldn't be drawn this time. The story continues!"]
+    # The raw error goes to the server log, never to the visitor.
+    assert "CUDA out of memory" in caplog.text
+
+
+def test_progress_text_shows_while_writing_and_drawing(fake_models):
+    pages = [update[1] for update in main.write_chapter("A door in the sea", "Fantasy", "Eerie", "Watercolor",
+                                                        main.new_story(), None, True, "Short")]
+    assert "Writing chapter I… usually" in pages[0]  # shown before the first words arrive
+    assert any("Drawing the illustration… usually" in page for page in pages)
+    assert "usually" not in pages[-1]  # gone once the chapter is finished
+
+
+def test_wait_estimates_follow_real_timings():
+    wait = main.WaitEstimate(30)
+    assert wait.describe() == "about 30 seconds"  # the measured default, before any timings
+    for seconds in (4, 5, 6):
+        wait.record(seconds)
+    assert wait.describe() == "a few seconds"
+    for seconds in (140, 150, 160, 170):
+        wait.record(seconds)
+    assert wait.describe() == "about 2 minutes"
+
+
 
 def test_story_model_choice_reaches_the_generator(fake_models, monkeypatch):
     monkeypatch.setattr(main, "ADAPTER_REPO", "someone/adapter")

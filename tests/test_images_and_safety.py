@@ -202,6 +202,38 @@ def test_sd_turbo_draws_in_one_step_without_guidance(sd_turbo):
     assert Image.open(path).size == (768, 512)
 
 
+def test_image_model_loads_once_when_two_callers_overlap(monkeypatch):
+    # The startup preload and the first request asking at the same moment must share one load.
+    import diffusers
+
+    loads = []
+
+    class SlowPipeline:
+        def __init__(self):
+            loads.append(self)
+            time.sleep(0.2)  # a real load takes seconds, so the second caller arrives mid-load
+
+        to = enable_attention_slicing = set_progress_bar_config = lambda self, *a, **k: self
+
+    monkeypatch.setattr(diffusers.AutoPipelineForText2Image, "from_pretrained", lambda *a, **k: SlowPipeline())
+    mm._load_image_pipeline.cache_clear()
+    start = threading.Barrier(2)
+    results = []
+
+    def caller():
+        start.wait()
+        results.append(mm.load_image_pipeline())
+
+    threads = [threading.Thread(target=caller) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    mm._load_image_pipeline.cache_clear()  # don't leave the fake behind for other tests
+    assert len(loads) == 1
+    assert len(results) == 2 and results[0] is results[1] is loads[0]
+
+
 def test_in_process_pictures_are_drawn_one_at_a_time(sd_turbo):
     threads = [threading.Thread(target=mm.generate_image, args=("A storm.", "Fantasy", "Eerie")) for _ in range(3)]
     for t in threads:

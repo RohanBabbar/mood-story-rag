@@ -5,7 +5,11 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
 # User-facing notices (gr.Warning) print as warnings when there is no browser; they are expected here.
-filterwarnings = ["ignore::UserWarning:gradio.helpers"]
+filterwarnings = [
+    "ignore::UserWarning:gradio.helpers",
+    # Raised inside torch when diffusers is imported; not something this project can fix.
+    "ignore:`torch.jit.script` is deprecated:FutureWarning",
+]
 
 [tool.ruff]
 line-length = 120
