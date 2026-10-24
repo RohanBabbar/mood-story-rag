@@ -133,13 +133,18 @@ Reply with only a JSON object with these keys:
 "main_character": the story's protagonist, always filled in, even if already known. \
 "new_characters": one entry for every other named character in the newest chapter who is not already a known \
 character. Every character entry is \
-{{"name": ..., "kind": ..., "age": ..., "hair": ..., "clothing": ..., "feature": ...}} where \
-"kind" is what they are in two or three words, "age" is an approximate age, "hair" is hair colour and style (fur for \
-animals), "clothing" is their main garment and its colour, and "feature" is one distinctive physical detail. \
-Use plain physical words, not metaphors from the story. When the text doesn't say, invent details that suit \
+{{"name": ..., "kind": ..., "hair": ..., "clothing": ..., "feature": ...}} where \
+"kind" is what they are in two to four words, starting with an age word for people (young, middle-aged, old...), \
+"hair" is hair colour and style ending in the word hair (fur for animals), "clothing" is their main garment with \
+its colour, and "feature" is one distinctive physical detail. Write each value as a short phrase without commas, \
+in plain physical words, not metaphors from the story. When the text doesn't say, invent details that suit \
 this particular story and its setting.
-"scene": one sentence describing the most striking visual moment of the newest chapter, for an illustrator. Refer to characters by name. Describe only what can be seen; don't name places and don't mention signs or writing.
-"scene_characters": names of the characters visible in that scene.
+"scene": one sentence of at most 25 words showing the most striking visual moment of the newest chapter, for an \
+illustrator: who is there and what each of them is doing. Describe only what can be seen; don't name places and \
+don't mention signs or writing.
+"scene_characters": the characters visible in that scene.
+In "scene" and "scene_characters", write every character's name exactly as it appears in the known characters \
+or in your main_character and new_characters, so the illustrator can look up how they look.
 "choices": three short, clearly different directions for the next chapter, each under 12 words, starting with a character's name and an action."""
 
 
@@ -172,7 +177,8 @@ def analyze_chapter(chapter, summary="", cast=None, token=None):
         # Proper names only; the model sometimes lists objects like "the clock".
         if not name or not name[0].isupper():
             continue
-        details = (str(person.get(k) or "").strip() for k in ("kind", "age", "hair", "clothing", "feature"))
+        # Commas separate the fields of a look, so none may appear inside one.
+        details = (str(person.get(k) or "").replace(",", "").strip() for k in ("kind", "hair", "clothing", "feature"))
         look = ", ".join(d for d in details if d and d.lower() not in ("none", "n/a", "unknown"))
         if look:
             # Never overwrite an established look; that's the whole point of the cast list.

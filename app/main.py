@@ -45,6 +45,7 @@ from app.multimodal import (
     generate_image,
     generate_narration,
     load_image_pipeline,
+    scene_cast,
 )
 from app.rag_pipeline import build_faiss_index, get_embedder, retrieve_context
 from app.safety import check_prompt
@@ -334,7 +335,7 @@ def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
 
     if illustrate:
         scene = notes["scene"] or first_sentences(chapter["text"])
-        characters = [(n, story["cast"][n]) for n in notes["scene_characters"] if n in story["cast"]][:3]
+        characters = scene_cast(scene, notes["scene_characters"], story["cast"])
         try:
             chapter["image"] = generate_image(scene, genre, mood or "evocative", art_style, characters, token)
         except Exception as e:

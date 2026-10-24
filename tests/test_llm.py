@@ -68,8 +68,8 @@ def analyze(reply, cast=None):
         return llm.analyze_chapter("chapter text", summary="old summary", cast=cast)
 
 
-EMILIA = {"name": "Emilia", "kind": "retired detective", "age": "about sixty", "hair": "silver bob",
-          "clothing": "tweed coat", "feature": "reading glasses"}
+EMILIA = {"name": "Emilia", "kind": "old retired detective", "hair": "silver bob hair",
+          "clothing": "brown tweed coat", "feature": "reading glasses"}
 
 
 def test_parses_a_full_reply():
@@ -82,7 +82,7 @@ def test_parses_a_full_reply():
         "choices": ["Emilia visits the docks", "Jasper vanishes", "A letter arrives", "a fourth one"],
     }))
     assert result["summary"] == "Emilia finds a clue."
-    assert result["cast"]["Emilia"] == "retired detective, about sixty, silver bob, tweed coat, reading glasses"
+    assert result["cast"]["Emilia"] == "old retired detective, silver bob hair, brown tweed coat, reading glasses"
     assert result["cast"]["Jasper"] == "grey cat, short fur, torn ear"
     assert result["choices"] == ["Emilia visits the docks", "Jasper vanishes", "A letter arrives"]
 
@@ -102,6 +102,13 @@ def test_established_looks_are_never_overwritten():
     result = analyze(json.dumps({"main_character": {**EMILIA, "hair": "CHANGED"}}),
                      cast={"Emilia": "retired detective, silver bob"})
     assert result["cast"] == {"Emilia": "retired detective, silver bob"}
+
+
+def test_commas_inside_a_detail_are_removed():
+    # A look is "kind, hair, clothing, feature"; a stray comma would split one detail into two.
+    result = analyze(json.dumps({"main_character": {"name": "Mara", "kind": "young cartographer",
+                                                    "hair": "brown, cropped hair"}}))
+    assert result["cast"]["Mara"] == "young cartographer, brown cropped hair"
 
 
 def test_ignores_objects_and_placeholder_details():
