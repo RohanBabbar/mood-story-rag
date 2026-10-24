@@ -380,7 +380,8 @@ def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
 
     if illustrate:
         scene = notes["scene"] or first_sentences(chapter["text"])
-        characters = scene_cast(scene, notes["scene_characters"], story["cast"])
+        # Stand-ins cover characters the model wouldn't describe, for this picture only: never a bare name.
+        characters = scene_cast(scene, notes["scene_characters"], {**story["cast"], **notes.get("stand_ins", {})})
         try:
             chapter["image"] = generate_image(scene, genre, mood or "evocative", art_style, characters, token)
             PICTURE_WAIT.record(time.monotonic() - started)

@@ -1,3 +1,4 @@
+import json
 import types
 import zipfile
 from datetime import date, timedelta
@@ -5,8 +6,9 @@ from datetime import date, timedelta
 import gradio as gr
 import pytest
 
-from app import main
+from app import llm, main
 from app.llm import StoryError
+from app.multimodal import build_image_prompt
 
 
 def chapter(text="Once upon a time.", **overrides):
@@ -127,6 +129,39 @@ def test_failed_generation_keeps_the_previous_story(fake_models, monkeypatch):
 
 def test_a_premise_is_needed_to_start(fake_models):
     assert write("")["chapters"] == []
+
+
+def test_protagonist_keeps_the_same_look_across_chapters(fake_models, monkeypatch):
+    # Chapter 2's analysis describes Lira differently; the look set in chapter 1 must win, and both
+    # pictures must use it.
+    replies = iter([
+        json.dumps({"main_character": {"name": "Lira", "kind": "young traveller", "hair": "copper hair"},
+                    "scene": "Lira finds a wreck.", "scene_characters": ["Lira"]}),
+        json.dumps({"main_character": {"name": "Lira", "kind": "old queen", "hair": "white hair"},
+                    "scene": "Lira rides on.", "scene_characters": ["Lira"]}),
+    ])
+    monkeypatch.setattr(llm, "stream_chat", lambda *a, **k: iter([next(replies)]))
+    monkeypatch.setattr(main, "analyze_chapter", llm.analyze_chapter)
+    pictures = []
+    monkeypatch.setattr(main, "generate_image", lambda scene, g, m, s, characters, t: pictures.append(characters))
+
+    story = write("", story=write("A wreck on the road"))
+    assert story["cast"]["Lira"] == "young traveller, copper hair"
+    assert pictures == [[("Lira", "young traveller, copper hair")]] * 2
+    assert "Lira: young traveller, copper hair" in fake_models["messages"][0]["content"]  # the writer sees it too
+
+
+def test_picture_uses_a_stand_in_never_a_bare_name(fake_models, monkeypatch):
+    def analyze(text, summary, cast, token):
+        return {"summary": "", "cast": {}, "scene": "Lira kneels by the wreck.", "scene_characters": ["Lira"],
+                "choices": [], "stand_ins": {"Lira": "woman"}}
+
+    prompts = []
+    monkeypatch.setattr(main, "analyze_chapter", analyze)
+    monkeypatch.setattr(main, "generate_image",
+                        lambda scene, g, m, s, characters, t: prompts.append(build_image_prompt(scene, g, m, s, characters)))
+    write("A wreck on the road")
+    assert "a woman kneels by the wreck." in prompts[0] and "Lira" not in prompts[0]
 
 
 def test_failed_illustration_keeps_the_chapter_with_a_friendly_message(fake_models, monkeypatch, caplog):
