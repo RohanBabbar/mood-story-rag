@@ -1,11 +1,13 @@
 import html
 import json
+import logging
 import random
+import statistics
 import threading
 import time
 import uuid
 import zipfile
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import date
 from pathlib import Path
 from urllib.parse import quote
@@ -33,7 +35,6 @@ from app.llm import (
     StoryError,
     analyze_chapter,
     build_messages,
-    explain_hf_error,
     stream_story,
     trim_to_last_sentence,
 )
@@ -50,6 +51,8 @@ from app.multimodal import (
 from app.rag_pipeline import build_faiss_index, get_embedder, retrieve_context
 from app.safety import check_prompt
 from app.utils import SUPPORTED_LORE_TYPES, chunk_text, delete_old_files, load_custom_lore
+
+logger = logging.getLogger(__name__)
 
 GENRES = ["Fantasy", "Sci-Fi", "Mystery", "Adventure", "Romance", "Horror", "Comedy", "Drama", "Fairy Tale", "Noir"]
 MOODS = ["Hopeful", "Dark", "Whimsical", "Eerie", "Melancholic", "Tense", "Cozy", "Epic", "Bittersweet", "Playful"]
@@ -76,6 +79,8 @@ EMPTY_STORY = """
 </div>
 """
 
+IMAGE_FAILED = "The illustration couldn't be drawn this time. The story continues!"
+
 NO_LORE_STATUS = "No lore loaded. The story can invent its own world."
 
 FINE_TUNED, BASE_MODEL = "Fine-tuned (LoRA)", "Base model"
@@ -97,6 +102,35 @@ def new_story():
 
 # === Rendering ===
 
+class WaitEstimate:
+    """How long a step usually takes: the median of its recent durations on this server.
+
+    Starts from timings measured on the live Modal app, then follows whatever hardware the app
+    actually runs on (SD-Turbo takes ~30 s on a CPU but ~5 s on an Apple Silicon GPU).
+    """
+
+    def __init__(self, default_seconds, keep=10):
+        self.default = default_seconds
+        self.recent = deque(maxlen=keep)
+
+    def record(self, seconds):
+        self.recent.append(seconds)
+
+    def describe(self):
+        seconds = statistics.median(self.recent) if self.recent else self.default
+        if seconds < 8:
+            return "a few seconds"
+        if seconds < 90:
+            return f"about {max(10, round(seconds / 5) * 5)} seconds"
+        return f"about {round(seconds / 60)} minutes"
+
+
+# Defaults measured on the live app (Groq text, SD-Turbo on 4 Modal CPU cores), October 2026: a
+# chapter's text was finished 6-7 s after the click, and a picture took 17-28 s after that.
+TEXT_WAIT = WaitEstimate(7)
+PICTURE_WAIT = WaitEstimate(25)
+
+
 def _roman(n):
     numerals = [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
     out = ""
@@ -108,7 +142,8 @@ def _roman(n):
 
 
 def render_story(chapters, phase=None):
-    """Render chapters as HTML. `phase` marks the last chapter as 'writing' or 'illustrating'."""
+    """Render chapters as HTML. `phase` marks the last chapter as 'writing', 'illustrating' or
+    'thinking' (planning the next choices), and shows how long that usually takes."""
     if not chapters:
         return EMPTY_STORY
     parts = []
@@ -117,14 +152,20 @@ def render_story(chapters, phase=None):
         if chapter["image"]:
             figure = f'<img class="art" src="/gradio_api/file={quote(chapter["image"])}" alt="Illustration for chapter {i}">'
         elif is_last and phase == "illustrating":
-            figure = '<div class="art art-pending">sketching the scene...</div>'
+            figure = (f'<div class="art art-pending"><span>Drawing the illustration… usually '
+                      f"{PICTURE_WAIT.describe()}.<br>Read on while it paints.</span></div>")
         else:
             figure = ""
 
         paragraphs = [p.strip() for p in chapter["text"].split("\n") if p.strip()]
         body = "".join(f"<p>{html.escape(p)}</p>" for p in paragraphs)
+        status = ""
         if is_last and phase == "writing":
             body = (body or "<p></p>")[:-4] + '<span class="cursor"></span></p>'
+            status = f"Writing chapter {_roman(i)}… usually {TEXT_WAIT.describe()}."
+        elif is_last and phase == "thinking":
+            status = "Planning what could happen next…"
+        status = f'<p class="status" role="status">{status}</p>' if status else ""
 
         meta = [chapter["genre"], chapter["mood"], chapter["style"] if chapter["image"] else "",
                 chapter.get("model", "")]
@@ -134,7 +175,7 @@ def render_story(chapters, phase=None):
 
         parts.append(
             f'<section class="chapter"><div class="chapter-head"><span class="numeral">{_roman(i)}.</span>'
-            f'<span class="meta">{meta}{lore}</span></div>{direction}{figure}<div class="chapter-text">{body}</div></section>'
+            f'<span class="meta">{meta}{lore}</span></div>{direction}{figure}{status}<div class="chapter-text">{body}</div></section>'
         )
     return '<div class="book">' + '<div class="fleuron">&#8258;</div>'.join(parts) + "</div>"
 
@@ -308,7 +349,9 @@ def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
                "model": ("fine-tuned" if model_choice == FINE_TUNED else "base") if ADAPTER_REPO else ""}
     story["chapters"].append(chapter)
 
-    last_render = 0.0
+    # Show the progress line straight away; the first words can take a moment to arrive.
+    yield story_view(story, "writing")
+    started = last_render = time.monotonic()
     try:
         for piece in stream_story(messages, length, token, use_adapter=model_choice == FINE_TUNED):
             chapter["text"] += piece
@@ -319,12 +362,14 @@ def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
         chapter["text"] = trim_to_last_sentence(chapter["text"])
         if not chapter["text"]:
             raise StoryError("The model returned an empty chapter. Please try again.")
+        TEXT_WAIT.record(time.monotonic() - started)
     except Exception as e:
         yield from notice(str(e) if isinstance(e, StoryError) else f"Story generation failed: {e}", original)
         return
 
     illustrate = art_style != NO_ILLUSTRATIONS
     yield story_view(story, "illustrating" if illustrate else "thinking")
+    started = time.monotonic()
 
     try:
         notes = analyze_chapter(chapter["text"], story["summary"], story["cast"], token)
@@ -338,9 +383,11 @@ def write_chapter(prompt, genre, mood, art_style, story, lore, use_lore, length,
         characters = scene_cast(scene, notes["scene_characters"], story["cast"])
         try:
             chapter["image"] = generate_image(scene, genre, mood or "evocative", art_style, characters, token)
-        except Exception as e:
-            reason = explain_hf_error(e) if hasattr(e, "response") else str(e)
-            gr.Warning(f"Couldn't illustrate this chapter: {reason}")
+            PICTURE_WAIT.record(time.monotonic() - started)
+        except Exception:
+            # The details are for the server log only; they mean nothing to a visitor and can leak internals.
+            logger.exception("Illustration failed")
+            gr.Warning(IMAGE_FAILED)
 
     yield story_view(story, prompt=gr.update(value="", placeholder=NEXT_PLACEHOLDER))
 
