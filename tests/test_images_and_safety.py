@@ -234,6 +234,16 @@ def test_image_model_loads_once_when_two_callers_overlap(monkeypatch):
     assert len(results) == 2 and results[0] is results[1] is loads[0]
 
 
+def test_every_picture_logs_its_scene_and_final_prompt(sd_turbo, caplog):
+    caplog.set_level("INFO", logger="app.multimodal")
+    mm.generate_image("Mara holds a map.", "Adventure", "Epic", characters=[MARA])
+    (record,) = [r for r in caplog.records if r.name == "app.multimodal"]
+    line = record.getMessage()
+    assert "scene='Mara holds a map.'" in line and "characters=['Mara Lorn']" in line
+    assert "a young cartographer (cropped brown hair" in line
+    assert f"tokens={words(mm.build_image_prompt('Mara holds a map.', 'Adventure', 'Epic', characters=[MARA]))}" in line
+
+
 def test_in_process_pictures_are_drawn_one_at_a_time(sd_turbo):
     threads = [threading.Thread(target=mm.generate_image, args=("A storm.", "Fantasy", "Eerie")) for _ in range(3)]
     for t in threads:

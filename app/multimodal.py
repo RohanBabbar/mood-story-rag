@@ -1,9 +1,12 @@
+import logging
 import re
 import threading
 import uuid
 from functools import lru_cache
 
 from app.config import IMAGE_FALLBACK_MODELS, IMAGE_MODEL, IMAGE_PROVIDER, OUTPUT_DIR
+
+logger = logging.getLogger(__name__)
 
 NO_ILLUSTRATIONS = "No illustrations"
 
@@ -169,6 +172,10 @@ def generate_image(scene, genre, mood, style=DEFAULT_ART_STYLE, characters=(), t
     # Hosted FLUX reads long prompts; the Stable Diffusion models drawn here stop at 77 tokens.
     count_tokens = None if IMAGE_PROVIDER == "hf" else count_clip_tokens
     prompt = build_image_prompt(scene, genre, mood, style, characters, count_tokens=count_tokens)
+    # One line per picture, so a mismatched illustration can be traced to its scene or its prompt.
+    tokens = count_tokens(prompt) if count_tokens else "n/a"
+    logger.info("Illustrating scene=%r characters=%r prompt=%r tokens=%s",
+                scene, [name for name, _ in characters], prompt, tokens)
     image = _generate_api(prompt, token) if IMAGE_PROVIDER == "hf" else _generate_in_process(prompt)
     path = OUTPUT_DIR / f"illustration_{uuid.uuid4().hex[:10]}.jpg"
     image.convert("RGB").save(path, quality=90)
