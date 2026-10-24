@@ -95,7 +95,7 @@ def test_finds_json_wrapped_in_chatter():
 def test_malformed_reply_falls_back_safely():
     result = analyze("{not valid json", cast={"Mira": "young girl"})
     assert result == {"summary": "old summary", "cast": {"Mira": "young girl"}, "scene": "",
-                      "scene_characters": [], "choices": []}
+                      "scene_characters": [], "choices": [], "stand_ins": {}}
 
 
 def test_established_looks_are_never_overwritten():
@@ -119,6 +119,61 @@ def test_ignores_objects_and_placeholder_details():
     assert result["cast"] == {"Night": "black cat"}
 
 
+# === Characters without a look: one follow-up, then a plain stand-in ===
+
+LIRA = {"name": "Lira", "kind": "young traveller", "hair": "copper braided hair", "clothing": "green cloak",
+        "feature": "scar on chin"}
+CHAPTER = "Lira found the wreck. She knelt beside it. Bronn shouted, and he ran to her."
+
+
+def analyze_with(replies, cast=None):
+    """Run analyze_chapter against scripted model replies; returns (result, calls made)."""
+    calls = []
+
+    def fake_stream_chat(messages, **options):
+        calls.append(options)
+        reply = replies[len(calls) - 1]
+        if isinstance(reply, Exception):
+            raise reply
+        yield reply
+
+    with mock.patch.object(llm, "stream_chat", fake_stream_chat):
+        return llm.analyze_chapter(CHAPTER, cast=cast), calls
+
+
+def test_bare_name_protagonist_is_described_by_one_follow_up():
+    result, calls = analyze_with([json.dumps({"main_character": "Lira", "scene_characters": ["Lira"]}),
+                                  json.dumps({"characters": [LIRA]})])
+    assert result["cast"]["Lira"] == "young traveller, copper braided hair, green cloak, scar on chin"
+    assert result["stand_ins"] == {}
+    # The follow-up is short and never tries other models.
+    assert len(calls) == 2 and calls[1]["timeout"] == llm.DESCRIBE_TIMEOUT_SECONDS and calls[1]["fallback"] is False
+
+
+def test_no_follow_up_when_every_character_has_a_look():
+    _, calls = analyze_with([json.dumps({"main_character": LIRA, "scene_characters": ["Lira"]})])
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("follow_up", [json.dumps({"characters": []}), TimeoutError("too slow")])
+def test_a_failed_follow_up_leaves_a_plain_stand_in(follow_up):
+    result, calls = analyze_with([json.dumps({"main_character": "Lira", "scene_characters": ["Lira", "Bronn"]}),
+                                  follow_up])
+    assert len(calls) == 2  # at most one follow-up
+    assert result["stand_ins"] == {"Lira": "woman", "Bronn": "man"}
+    assert "Lira" not in result["cast"]  # stand-ins are for one picture, never saved as a look
+
+
+@pytest.mark.parametrize("text, kind", [
+    ("Kai waved. He grinned.", "man"),
+    ("Ember the fox sniffed the air. Its tail twitched.", "creature"),
+    ("Sam arrived. Nobody spoke.", "person"),
+    ("Ana saw Ben. She waved and he waved back.", "person"),  # a tie is too close to call
+])
+def test_stand_in_follows_the_pronouns_near_the_name(text, kind):
+    assert llm.stand_in_look(text.split()[0], text) == kind
+
+
 # === Hosted models: errors and fallbacks ===
 
 @pytest.mark.parametrize("status, phrase", [
@@ -137,7 +192,7 @@ class FakeClient:
 
     failures, calls, api_key, base_url, extras = {}, [], None, None, []
 
-    def __init__(self, provider=None, api_key=None, base_url=None):
+    def __init__(self, provider=None, api_key=None, base_url=None, timeout=None):
         FakeClient.api_key, FakeClient.base_url = api_key, base_url
 
     def chat_completion(self, messages, model, extra_body=None, **kwargs):

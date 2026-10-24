@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from contextlib import nullcontext
 from functools import lru_cache
@@ -16,6 +17,8 @@ from app.config import (
 )
 
 # Rough word targets per chapter; tokens are budgeted with headroom so endings aren't cut off.
+logger = logging.getLogger(__name__)
+
 LENGTHS = {"Short": 150, "Medium": 280, "Long": 450}
 
 # Only the most recent chapters are sent back to the model to keep the prompt small.
@@ -103,10 +106,11 @@ def trim_to_last_sentence(text):
 
 
 def stream_chat(messages, max_tokens, temperature=0.85, token=None, repetition_penalty=1.0, use_adapter=False,
-                model=None):
+                model=None, timeout=None, fallback=True):
     """`token` is the signed-in visitor's HF token; None falls back to the server's HF_TOKEN. It is
     ignored on Groq, which always uses the server's GROQ_API_KEY. `model` overrides TEXT_MODEL for
-    hosted backends.
+    hosted backends; `timeout` (seconds per request) and `fallback=False` (no backup models) keep
+    optional calls short.
 
     `repetition_penalty` and `use_adapter` only apply to local models. Keep the penalty at 1.0 for
     JSON output, whose brackets and quotes legitimately repeat; the adapter is off by default
@@ -115,8 +119,17 @@ def stream_chat(messages, max_tokens, temperature=0.85, token=None, repetition_p
     if BACKEND == "local":
         yield from _stream_local(messages, max_tokens, temperature, repetition_penalty, use_adapter)
     else:
-        yield from _stream_api(messages, max_tokens, temperature, token, model or TEXT_MODEL)
+        yield from _stream_api(messages, max_tokens, temperature, token, model or TEXT_MODEL, timeout, fallback)
 
+
+# Shared by both prompts below, which are filled in with str.format (hence the doubled braces).
+CHARACTER_ENTRY = """A character entry is an object \
+{{"name": ..., "kind": ..., "hair": ..., "clothing": ..., "feature": ...}} where \
+"kind" is what they are in two to four words, starting with an age word for people (young, middle-aged, old...), \
+"hair" is hair colour and style ending in the word hair (fur for animals), "clothing" is their main garment with \
+its colour, and "feature" is one distinctive physical detail. Write each value as a short phrase without commas, \
+in plain physical words, not metaphors from the story. When the text doesn't say, invent details that suit \
+this particular story and its setting."""
 
 ANALYSIS_PROMPT = """Story summary before this chapter: {summary}
 
@@ -130,48 +143,50 @@ Newest chapter:
 
 Reply with only a JSON object with these keys:
 "summary": 2-4 sentences summarising the whole story so far, including the newest chapter.
-"main_character": the story's protagonist, always filled in, even if already known. \
-"new_characters": one entry for every other named character in the newest chapter who is not already a known \
-character. Every character entry is \
-{{"name": ..., "kind": ..., "hair": ..., "clothing": ..., "feature": ...}} where \
-"kind" is what they are in two to four words, starting with an age word for people (young, middle-aged, old...), \
-"hair" is hair colour and style ending in the word hair (fur for animals), "clothing" is their main garment with \
-its colour, and "feature" is one distinctive physical detail. Write each value as a short phrase without commas, \
-in plain physical words, not metaphors from the story. When the text doesn't say, invent details that suit \
-this particular story and its setting.
-"scene": one sentence of at most 25 words showing the most striking visual moment of the newest chapter, for an \
-illustrator: who is there and what each of them is doing. Describe only what can be seen; don't name places and \
+"main_character": the story's protagonist as a full character entry (an object, not just a name), always \
+filled in, even if already known.
+"new_characters": a list with one character entry for every other named character in the newest chapter who is \
+not already a known character.
+""" + CHARACTER_ENTRY + """
+"scene": one sentence of at most 25 words showing the key moment from the first half of the newest chapter, with \
+the main character in it, for an illustrator: who is there and what each of them is doing. Name important \
+unnamed animals and objects plainly by what they are. Describe only what can be seen; don't name places and \
 don't mention signs or writing.
-"scene_characters": the characters visible in that scene.
+"scene_characters": the named characters visible in that scene.
 In "scene" and "scene_characters", write every character's name exactly as it appears in the known characters \
 or in your main_character and new_characters, so the illustrator can look up how they look.
-"choices": three short, clearly different directions for the next chapter, each under 12 words, starting with a character's name and an action."""
+"choices": three short, clearly different directions for the next chapter, each under 12 words, starting with a \
+character's name and an action."""
+
+DESCRIBE_PROMPT = """Characters: {names}
+
+<chapter>
+{chapter}
+</chapter>
+
+Reply with only a JSON object {{"characters": [...]}} holding one character entry for each character listed \
+above, as they appear in the chapter.
+""" + CHARACTER_ENTRY
+
+EDITOR = {"role": "system", "content": "You are a meticulous story editor. You reply with valid JSON only."}
+
+# The follow-up that fills in missing looks must never hold up a chapter for long.
+DESCRIBE_TIMEOUT_SECONDS = 10
 
 
-def analyze_chapter(chapter, summary="", cast=None, token=None):
-    """Ask the model for a story summary, cast list, illustration scene and next-step choices.
-
-    Returns a dict with keys summary, cast, scene, scene_characters, choices. Missing or malformed
-    fields fall back to safe defaults so a bad reply never breaks the story.
-    """
-    cast = dict(cast or {})
-    messages = [
-        {"role": "system", "content": "You are a meticulous story editor. You reply with valid JSON only."},
-        {"role": "user", "content": ANALYSIS_PROMPT.format(
-            summary=summary or "(this is the first chapter)",
-            cast="\n".join(f"- {n}: {a}" for n, a in cast.items()) or "(none yet)",
-            chapter=chapter,
-        )},
-    ]
-    reply = "".join(stream_chat(messages, max_tokens=600, temperature=0.4, token=token, model=ANALYSIS_MODEL))
+def _ask_json(prompt, max_tokens, token=None, **options):
+    reply = "".join(stream_chat([EDITOR, {"role": "user", "content": prompt}], max_tokens=max_tokens,
+                                temperature=0.4, token=token, model=ANALYSIS_MODEL, **options))
     match = re.search(r"\{.*\}", reply, re.DOTALL)
     try:
         data = json.loads(match.group(0)) if match else {}
     except json.JSONDecodeError:
         data = {}
+    return data if isinstance(data, dict) else {}
 
-    # The protagonist gets its own key because small models skip it when it's just one list item.
-    people = [data.get("main_character")] + list(data.get("new_characters") or [])
+
+def _add_looks(cast, people):
+    """Add each well-formed character entry to the cast, never changing a look that's already set."""
     for person in people:
         name = str(person.get("name") or "").strip() if isinstance(person, dict) else ""
         # Proper names only; the model sometimes lists objects like "the clock".
@@ -184,13 +199,71 @@ def analyze_chapter(chapter, summary="", cast=None, token=None):
             # Never overwrite an established look; that's the whole point of the cast list.
             cast.setdefault(name, look)
 
+
+def stand_in_look(name, text):
+    """A plain look for a character the model wouldn't describe: "woman", "man", "creature" or
+    "person", judged from the pronouns in and right after the sentences that mention them. Used for
+    one picture only, so the image model never gets a bare name it can't draw.
+
+    Only subject pronouns (and "its") count: object ones like "her" or "it" usually point at someone
+    or something else ("he ran to her", "she knelt beside it").
+    """
+    from app.multimodal import name_aliases
+
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    mention = re.compile("|".join(rf"(?<!\w){re.escape(a)}(?!\w)" for a in name_aliases([name])))
+    near = " ".join(" ".join(sentences[i:i + 2]) for i, s in enumerate(sentences) if mention.search(s)).lower()
+    counts = {kind: len(re.findall(rf"\b(?:{words})\b", near)) for kind, words in
+              {"woman": "she|herself", "man": "he|himself", "creature": "its|itself"}.items()}
+    best = max(counts, key=counts.get)
+    return best if counts[best] and list(counts.values()).count(counts[best]) == 1 else "person"
+
+
+def analyze_chapter(chapter, summary="", cast=None, token=None):
+    """Ask the model for a story summary, cast list, illustration scene and next-step choices.
+
+    Returns a dict with keys summary, cast, scene, scene_characters, choices and stand_ins (plain
+    looks for this chapter's picture only, for characters who still have no look). Missing or
+    malformed fields fall back to safe defaults so a bad reply never breaks the story.
+    """
+    from app.multimodal import match_cast_name
+
+    cast = dict(cast or {})
+    data = _ask_json(ANALYSIS_PROMPT.format(
+        summary=summary or "(this is the first chapter)",
+        cast="\n".join(f"- {n}: {a}" for n, a in cast.items()) or "(none yet)",
+        chapter=chapter,
+    ), max_tokens=600, token=token)
+
+    # The protagonist gets its own key because small models skip it when it's just one list item.
+    protagonist = data.get("main_character")
+    _add_looks(cast, [protagonist, *(data.get("new_characters") or [])])
+    scene_characters = [str(n) for n in data.get("scene_characters") or []]
+
+    # Characters who need a look but still have none. Most often it's the protagonist, returned as a
+    # bare name instead of a full entry; one short follow-up asks for just those.
+    protagonist_name = protagonist.get("name") if isinstance(protagonist, dict) else protagonist
+    wanted = dict.fromkeys(str(n).strip() for n in [protagonist_name, *scene_characters] if n)
+
+    def missing():
+        return [n for n in wanted if n[:1].isupper() and match_cast_name(n, list(cast)) is None]
+
+    if missing():
+        try:
+            reply = _ask_json(DESCRIBE_PROMPT.format(names=", ".join(missing()), chapter=chapter), max_tokens=400,
+                              token=token, timeout=DESCRIBE_TIMEOUT_SECONDS, fallback=False)
+            _add_looks(cast, reply.get("characters") or [])
+        except Exception:
+            logger.warning("Describing characters %s failed", missing(), exc_info=True)
+
     choices = [str(c).strip() for c in data.get("choices") or [] if str(c).strip()][:3]
     return {
         "summary": str(data.get("summary") or summary).strip(),
         "cast": cast,
         "scene": str(data.get("scene") or "").strip(),
-        "scene_characters": [str(n) for n in data.get("scene_characters") or []],
+        "scene_characters": scene_characters,
         "choices": choices,
+        "stand_ins": {name: stand_in_look(name, chapter) for name in missing()},
     }
 
 
@@ -222,19 +295,19 @@ def request_options(model):
     return None
 
 
-def _stream_api(messages, max_tokens, temperature, token=None, primary=TEXT_MODEL):
+def _stream_api(messages, max_tokens, temperature, token=None, primary=TEXT_MODEL, timeout=None, fallback=True):
     from huggingface_hub import InferenceClient
     from huggingface_hub.errors import HfHubHTTPError
 
     if TEXT_PROVIDER == "groq":
         # Groq speaks the OpenAI chat API, which InferenceClient can call directly.
-        client = InferenceClient(base_url=GROQ_BASE_URL, api_key=GROQ_API_KEY)
+        client = InferenceClient(base_url=GROQ_BASE_URL, api_key=GROQ_API_KEY, timeout=timeout)
         retry_statuses = GROQ_FALLBACK_STATUSES
     else:
-        client = InferenceClient(provider="auto", api_key=token)
+        client = InferenceClient(provider="auto", api_key=token, timeout=timeout)
         retry_statuses = FALLBACK_STATUSES
     error = None
-    for model in models_to_try(primary, TEXT_FALLBACK_MODELS):
+    for model in models_to_try(primary, TEXT_FALLBACK_MODELS if fallback else []):
         started = False
         try:
             for chunk in client.chat_completion(
